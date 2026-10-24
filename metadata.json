@@ -1,0 +1,6 @@
+{
+  "name": "Pakistan Labour Community Member Portal",
+  "description": "Official member portal for Pakistan Labour Community supporting Pakistani workers and community members connected between Pakistan and Oman.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

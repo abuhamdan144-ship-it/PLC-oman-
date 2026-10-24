@@ -1,0 +1,69 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --color-navy: #071F25;
+    --color-emerald-deep: #0D5A31;
+    --color-emerald-light: #168A68;
+    --color-gold: #E4AE2F;
+    --color-gold-dark: #C99A3B;
+    --color-ivory: #FFF8E8;
+    --color-ivory-subtle: #F7F2E8;
+    --color-sand: #F9F7F2;
+  }
+
+  body {
+    background-color: #F9F7F2;
+    color: #071F25;
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1, h2, .font-heading {
+    font-family: 'Playfair Display', Georgia, serif;
+  }
+}
+
+/* 3D Card Flip utility classes */
+.perspective-1000 {
+  perspective: 1000px;
+}
+
+.transform-style-3d {
+  transform-style: preserve-3d;
+}
+
+.backface-hidden {
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.rotate-y-180 {
+  transform: rotateY(180deg);
+}
+
+/* Print Stylesheet for Membership Card */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  
+  .print-area, .print-area * {
+    visibility: visible;
+  }
+
+  .print-area {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    margin: 0;
+    padding: 20px;
+    background: transparent !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+}
