@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { 
   collection, 
   onSnapshot, 
@@ -10,7 +11,6 @@ import {
 import { db } from '../lib/firebase';
 import { useAuth } from '../hooks/useAuth';
 import { MemberProfile, MemberStatus } from '../types';
-import { SAMPLE_MEMBER_PENDING, SAMPLE_MEMBER_APPROVED } from '../lib/seed';
 import { PakistanFlag, OmanFlag, FlagPair } from '../lib/flags';
 import { 
   ShieldCheck, 
@@ -64,16 +64,12 @@ export const AdminRegistrationsPage: React.FC = () => {
             ...doc.data(),
           } as MemberProfile);
         });
-        if (list.length === 0) {
-          setMembers([SAMPLE_MEMBER_PENDING, SAMPLE_MEMBER_APPROVED]);
-        } else {
-          setMembers(list);
-        }
+        setMembers(list);
         setLoading(false);
       },
       (error) => {
-        console.warn('Member registry note (using initial preview files):', error.message);
-        setMembers([SAMPLE_MEMBER_PENDING, SAMPLE_MEMBER_APPROVED]);
+        console.error('Could not load the member registry:', error.message);
+        setMembers([]);
         setLoading(false);
       }
     );
@@ -114,6 +110,7 @@ export const AdminRegistrationsPage: React.FC = () => {
       // Transaction to safely generate unique sequential Member ID (PLC-2026-00001)
       const counterRef = doc(db, 'system', 'memberCounter');
       const memberRef = doc(db, 'members', targetMember.uid);
+      const publicMemberRef = doc(db, 'publicMembers', targetMember.uid);
 
       await runTransaction(db, async (transaction) => {
         const counterDoc = await transaction.get(counterRef);
@@ -134,6 +131,17 @@ export const AdminRegistrationsPage: React.FC = () => {
           memberSince: memberSinceStr,
           adminNote: adminNoteInput.trim() || 'Verified and approved by Community Administrator.',
         });
+
+        transaction.set(publicMemberRef, {
+          uid: targetMember.uid,
+          memberId: generatedMemberId,
+          fullName: targetMember.fullName,
+          country: targetMember.country,
+          currentLocation: targetMember.currentLocation || '',
+          photoURL: targetMember.photoURL || '',
+          status: 'approved',
+          memberSince: memberSinceStr,
+        });
       });
 
       // Add Welcome notification to member's notifications subcollection
@@ -153,22 +161,8 @@ export const AdminRegistrationsPage: React.FC = () => {
       setActionType(null);
       setTargetMember(null);
     } catch (err) {
-      console.warn('Approval note:', err);
-      const generatedMemberId = `PLC-2026-000${Math.floor(10 + Math.random() * 89)}`;
-      setMembers((prev) =>
-        prev.map((m) =>
-          m.uid === targetMember.uid
-            ? {
-                ...m,
-                status: 'approved',
-                memberId: generatedMemberId,
-                approvedAt: new Date().toISOString(),
-                memberSince: 'October 2026',
-              }
-            : m
-        )
-      );
-      showToast(`Member ${targetMember.fullName} approved with ID ${generatedMemberId}!`);
+      console.error('Member approval failed; no approval was granted:', err);
+      showToast(`Could not approve ${targetMember.fullName}. Check Firestore access and try again.`, 'error');
       setActionType(null);
       setTargetMember(null);
     } finally {
@@ -207,19 +201,8 @@ export const AdminRegistrationsPage: React.FC = () => {
       setActionType(null);
       setTargetMember(null);
     } catch (err) {
-      console.warn('Rejection note:', err);
-      setMembers((prev) =>
-        prev.map((m) =>
-          m.uid === targetMember.uid
-            ? {
-                ...m,
-                status: 'rejected',
-                adminNote: adminNoteInput.trim() || 'Application was not approved.',
-              }
-            : m
-        )
-      );
-      showToast(`Registration for ${targetMember.fullName} was declined.`);
+      console.error('Registration rejection failed; no status was changed:', err);
+      showToast(`Could not decline ${targetMember.fullName}. Check Firestore access and try again.`, 'error');
       setActionType(null);
       setTargetMember(null);
     } finally {
@@ -258,19 +241,8 @@ export const AdminRegistrationsPage: React.FC = () => {
       setActionType(null);
       setTargetMember(null);
     } catch (err) {
-      console.warn('Request info note:', err);
-      setMembers((prev) =>
-        prev.map((m) =>
-          m.uid === targetMember.uid
-            ? {
-                ...m,
-                status: 'info_requested',
-                adminNote: adminNoteInput.trim(),
-              }
-            : m
-        )
-      );
-      showToast(`Information clarification requested from ${targetMember.fullName}.`);
+      console.error('Information request failed; no status was changed:', err);
+      showToast(`Could not request information from ${targetMember.fullName}. Check Firestore access and try again.`, 'error');
       setActionType(null);
       setTargetMember(null);
     } finally {
@@ -334,6 +306,9 @@ export const AdminRegistrationsPage: React.FC = () => {
             <span className="text-xs text-stone-300 hidden sm:inline">
               Admin: <strong className="text-amber-300">{currentAdmin?.fullName || user?.email}</strong>
             </span>
+            <Link to="/admin/portal" className="inline-flex items-center gap-1.5 rounded-lg bg-amber-300 px-3 py-2 text-xs font-bold text-[#071F25] hover:bg-amber-200">
+              <ExternalLink className="h-3.5 w-3.5" /> Portal controls
+            </Link>
           </div>
         </div>
       </div>

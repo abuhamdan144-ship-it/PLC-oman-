@@ -1,8 +1,6 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    // Helper functions
     function isAuthenticated() {
       return request.auth != null;
     }
@@ -16,62 +14,126 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      return isAuthenticated() && 
-        exists(/databases/$(database)/documents/members/$(request.auth.uid)) &&
-        getMemberData(request.auth.uid).role == 'admin';
+      return isAuthenticated()
+        && exists(/databases/$(database)/documents/members/$(request.auth.uid))
+        && getMemberData(request.auth.uid).role == 'admin';
     }
 
-    // Members collection
+    function isApprovedMember() {
+      return isAuthenticated()
+        && exists(/databases/$(database)/documents/members/$(request.auth.uid))
+        && getMemberData(request.auth.uid).role == 'member'
+        && getMemberData(request.auth.uid).status == 'approved';
+    }
+
+    // Private member records: visible only to the owner and administrators.
     match /members/{userId} {
-      // Members can read only their own doc; admins can read all member docs.
-      // Allow public verification query of member doc if query reads specific doc (or authenticated)
-      allow get: if isOwner(userId) || isAdmin() || true; // Public read for QR verification by doc ID
+      allow get: if isOwner(userId) || isAdmin();
       allow list: if isAdmin();
 
-      // On create:
-      // - Must be the user's own document (userId == request.auth.uid)
-      // - status must be 'pending'
-      // - role must be 'member'
       allow create: if isOwner(userId)
+        && request.resource.data.keys().hasOnly([
+          'fullName', 'email', 'mobile', 'country', 'currentLocation', 'idNumber',
+          'photoURL', 'status', 'adminNote', 'registeredAt', 'emergencyContact', 'role'
+        ])
         && request.resource.data.status == 'pending'
         && request.resource.data.role == 'member';
 
-      // On update:
-      // - Admins can update any field (such as status, memberId, approvedAt, adminNote)
-      // - Normal members can update only their own doc, and CANNOT change:
-      //   status, role, memberId, or approvedAt
       allow update: if isAdmin() || (
         isOwner(userId)
-        && request.resource.data.status == resource.data.status
-        && request.resource.data.role == resource.data.role
-        && (!('memberId' in request.resource.data) || request.resource.data.memberId == resource.data.memberId)
-        && (!('approvedAt' in request.resource.data) || request.resource.data.approvedAt == resource.data.approvedAt)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'mobile', 'currentLocation', 'emergencyContact', 'photoURL'
+        ])
       );
 
-      // Members cannot delete their profile doc directly (managed by admin)
       allow delete: if isAdmin();
 
-      // Subcollection: notifications
       match /notifications/{notificationId} {
         allow read: if isOwner(userId) || isAdmin();
-        // Member can update to mark as read
-        allow update: if (isOwner(userId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read'])) || isAdmin();
+        allow update: if (isOwner(userId)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']))
+          || isAdmin();
         allow create, delete: if isAdmin() || isOwner(userId);
       }
     }
 
-    // System counter for generating sequential Member IDs (PLC-2026-XXXXX)
+    // Public QR verification exposes a deliberately minimal record and cannot be listed.
+    match /publicMembers/{userId} {
+      allow get: if true;
+      allow list: if isAdmin();
+      allow create: if isAdmin();
+      allow update: if isAdmin() || (
+        isOwner(userId)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['currentLocation', 'photoURL'])
+        && request.resource.data.currentLocation == getMemberData(userId).currentLocation
+        && request.resource.data.photoURL == getMemberData(userId).photoURL
+      );
+      allow delete: if isAdmin();
+    }
+
     match /system/{document=**} {
       allow read, write: if isAdmin();
     }
 
-    // Incident / Grievance reporting collection
+    // Reports can be filed only by an approved member and are visible only to admins.
     match /incidents/{incidentId} {
-      allow create: if isAuthenticated();
-      allow read, update, delete: if isAdmin();
+      allow create: if isApprovedMember()
+        && request.resource.data.keys().hasOnly([
+          'memberUid', 'memberId', 'memberName', 'memberMobile', 'subject',
+          'category', 'details', 'urgency', 'createdAt', 'status'
+        ])
+        && request.resource.data.memberUid == request.auth.uid
+        && request.resource.data.memberId == getMemberData(request.auth.uid).memberId
+        && request.resource.data.memberName == getMemberData(request.auth.uid).fullName
+        && request.resource.data.memberMobile == getMemberData(request.auth.uid).mobile
+        && request.resource.data.category in ['death', 'injury', 'lost', 'found', 'wages', 'other']
+        && request.resource.data.urgency in ['normal', 'urgent', 'critical']
+        && request.resource.data.subject is string
+        && request.resource.data.details is string
+        && request.resource.data.status == 'new'
+        && request.resource.data.createdAt == request.time;
+      allow read: if isAdmin();
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'statusUpdatedAt'])
+        && request.resource.data.status in ['new', 'reviewing', 'resolved']
+        && request.resource.data.statusUpdatedAt == request.time;
+      allow delete: if isAdmin();
     }
 
-    // Deny everything else by default
+    // Admin-managed election configuration. Members can read a specific ballot,
+    // but cannot enumerate the election collection.
+    match /settings/{settingId} {
+      allow get: if (settingId == 'portal' && (isApprovedMember() || isAdmin())) || isAdmin();
+      allow list: if isAdmin();
+      allow create, update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    match /elections/{electionId} {
+      allow get: if isApprovedMember() || isAdmin();
+      allow list: if isAdmin();
+      allow create, update: if isAdmin();
+      allow delete: if false;
+
+      match /votes/{memberUid} {
+        allow get: if isAdmin() || isOwner(memberUid);
+        allow list: if isAdmin();
+        allow create: if isApprovedMember()
+          && isOwner(memberUid)
+          && request.resource.data.keys().hasOnly(['memberUid', 'optionId', 'submittedAt'])
+          && request.resource.data.memberUid == request.auth.uid
+          && request.resource.data.optionId is string
+          && request.resource.data.optionId in get(/databases/$(database)/documents/elections/$(electionId)).data.optionIds
+          && get(/databases/$(database)/documents/elections/$(electionId)).data.status == 'open'
+          && exists(/databases/$(database)/documents/settings/portal)
+          && get(/databases/$(database)/documents/settings/portal).data.activeElectionId == electionId
+          && request.time < get(/databases/$(database)/documents/elections/$(electionId)).data.closesAt
+          && request.resource.data.submittedAt == request.time;
+        allow update, delete: if false;
+      }
+    }
+
+    // Deny everything else by default.
     match /{document=**} {
       allow read, write: if false;
     }

@@ -54,6 +54,7 @@
   }
 
   .print-area {
+    display: block !important;
     position: absolute;
     left: 0;
     top: 0;
@@ -61,6 +62,8 @@
     margin: 0;
     padding: 20px;
     background: transparent !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
 
   .no-print {

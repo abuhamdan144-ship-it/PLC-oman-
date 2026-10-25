@@ -18,8 +18,12 @@ export const ProtectedMemberRoute: React.FC<{ children: React.ReactNode }> = ({ 
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  // If member document isn't approved yet, send to pending-approval
-  if (!member || member.status !== 'approved') {
+  if (member?.role === 'admin') {
+    return <Navigate to="/admin/registrations" replace />;
+  }
+
+  // The mobile portal is reserved for approved member accounts.
+  if (!member || member.role !== 'member' || member.status !== 'approved') {
     return <Navigate to="/pending-approval" replace />;
   }
 

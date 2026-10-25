@@ -158,11 +158,12 @@ const CardWatermarkBackground: React.FC = () => {
 };
 
 export const MembershipCard: React.FC<MembershipCardProps> = ({ member }) => {
-  const [viewMode, setViewMode] = useState<'flip' | 'sideBySide'>('flip');
+  const [viewMode, setViewMode] = useState<'flip' | 'sideBySide'>('sideBySide');
   const [isFlipped, setIsFlipped] = useState(false);
   const [qrCodeUrl, setQrCodeUrl] = useState<string>('');
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadSuccess, setDownloadSuccess] = useState(false);
+  const [photoFailed, setPhotoFailed] = useState(false);
 
   const frontCardRef = useRef<HTMLDivElement>(null);
   const backCardRef = useRef<HTMLDivElement>(null);
@@ -170,10 +171,16 @@ export const MembershipCard: React.FC<MembershipCardProps> = ({ member }) => {
 
   // Generate dynamic QR code encoding official verification URL
   useEffect(() => {
-    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://pakistanlabour.org';
-    const verifyUrl = `${origin}/verify?id=${encodeURIComponent(member.memberId || 'PLC-84920')}&uid=${encodeURIComponent(member.uid)}`;
+    let isCurrentRequest = true;
+    setQrCodeUrl('');
+
+    const verifyUrl = new URL('/verify', window.location.origin);
+    if (member.memberId) {
+      verifyUrl.searchParams.set('id', member.memberId);
+    }
+    verifyUrl.searchParams.set('uid', member.uid);
     
-    QRCode.toDataURL(verifyUrl, {
+    QRCode.toDataURL(verifyUrl.toString(), {
       width: 256,
       margin: 1,
       color: {
@@ -181,13 +188,25 @@ export const MembershipCard: React.FC<MembershipCardProps> = ({ member }) => {
         light: '#FFFFFF'
       }
     })
-      .then((url) => setQrCodeUrl(url))
-      .catch((err) => console.error('Error generating QR code:', err));
+      .then((url) => {
+        if (isCurrentRequest) setQrCodeUrl(url);
+      })
+      .catch((err) => {
+        if (isCurrentRequest) console.error('Error generating QR code:', err);
+      });
+
+    return () => {
+      isCurrentRequest = false;
+    };
   }, [member.memberId, member.uid]);
+
+  useEffect(() => {
+    setPhotoFailed(false);
+  }, [member.photoURL]);
 
   // Mask CNIC / ID number to match format e.g. 42201-1234567-3
   const formatIdNumber = (id: string) => {
-    if (!id) return '42201-1234567-3';
+    if (!id?.trim()) return '—';
     const clean = id.trim();
     if (clean.includes('-')) return clean;
     if (clean.length === 13) {
@@ -241,7 +260,7 @@ export const MembershipCard: React.FC<MembershipCardProps> = ({ member }) => {
     return (
       <div
         ref={isExportTarget ? frontCardRef : undefined}
-        style={{ width: '480px', height: '302px' }}
+        style={{ width: '100%', maxWidth: '480px', aspectRatio: '480 / 302' }}
         className="relative rounded-2xl overflow-hidden shadow-2xl border border-amber-400/40 select-none flex flex-col justify-between shrink-0 bg-[#03191E]"
       >
         <CardWatermarkBackground />
@@ -277,11 +296,12 @@ export const MembershipCard: React.FC<MembershipCardProps> = ({ member }) => {
             
             {/* Member Photo */}
             <div className="shrink-0">
-              {member.photoURL ? (
+              {member.photoURL && !photoFailed ? (
                 <img
                   src={member.photoURL}
                   alt={member.fullName}
                   className="w-19 h-24 rounded-xl object-cover border-2 border-white/90 shadow-md bg-stone-900"
+                  onError={() => setPhotoFailed(true)}
                 />
               ) : (
                 <div className="w-19 h-24 rounded-xl bg-white/95 border-2 border-white/90 shadow-md flex flex-col items-center justify-center text-[#03191E]">
@@ -294,11 +314,11 @@ export const MembershipCard: React.FC<MembershipCardProps> = ({ member }) => {
             {/* Center: Name, ID, Active Pill, Subtext */}
             <div className="flex-1 min-w-0 pr-1">
               <h4 className="text-[17px] font-extrabold text-white leading-tight truncate">
-                {member.fullName || 'Ali Khan'}
+                {member.fullName || 'Member'}
               </h4>
               
               <div className="text-[15px] font-extrabold font-mono text-[#E5B842] tracking-wide mt-0.5">
-                {member.memberId || 'PLC-84920'}
+                {member.memberId || 'Not assigned'}
               </div>
 
               {/* Active Member Capsule */}
@@ -392,7 +412,7 @@ export const MembershipCard: React.FC<MembershipCardProps> = ({ member }) => {
     return (
       <div
         ref={isExportTarget ? backCardRef : undefined}
-        style={{ width: '480px', height: '302px' }}
+        style={{ width: '100%', maxWidth: '480px', aspectRatio: '480 / 302' }}
         className="relative rounded-2xl overflow-hidden shadow-2xl border border-amber-400/40 select-none flex flex-col justify-between shrink-0 bg-[#03191E]"
       >
         <CardWatermarkBackground />
@@ -427,7 +447,7 @@ export const MembershipCard: React.FC<MembershipCardProps> = ({ member }) => {
                   <tr>
                     <td className="w-36 font-semibold text-[#071F25] py-0.5">Full name</td>
                     <td className="w-3 text-stone-400 font-bold">:</td>
-                    <td className="font-bold text-[#052125] py-0.5 truncate">{member.fullName || 'Ali Khan'}</td>
+                    <td className="font-bold text-[#052125] py-0.5 truncate">{member.fullName || 'Member'}</td>
                   </tr>
                   <tr>
                     <td className="font-semibold text-[#071F25] py-0.5">CNIC / passport</td>
@@ -437,23 +457,23 @@ export const MembershipCard: React.FC<MembershipCardProps> = ({ member }) => {
                   <tr>
                     <td className="font-semibold text-[#071F25] py-0.5">Current location</td>
                     <td className="text-stone-400 font-bold">:</td>
-                    <td className="font-semibold text-stone-700 py-0.5 truncate">{member.currentLocation || 'Muscat, Oman'}</td>
+                    <td className="font-semibold text-stone-700 py-0.5 truncate">{member.currentLocation || '—'}</td>
                   </tr>
                   <tr>
                     <td className="font-semibold text-[#071F25] py-0.5">Mobile number</td>
                     <td className="text-stone-400 font-bold">:</td>
-                    <td className="font-mono font-bold text-stone-800 py-0.5">{member.mobile || '+968 9123 4567'}</td>
+                    <td className="font-mono font-bold text-stone-800 py-0.5">{member.mobile || '—'}</td>
                   </tr>
                   <tr>
                     <td className="font-semibold text-[#071F25] py-0.5">Member since</td>
                     <td className="text-stone-400 font-bold">:</td>
-                    <td className="font-semibold text-stone-700 py-0.5">{member.memberSince || 'Jan 2024'}</td>
+                    <td className="font-semibold text-stone-700 py-0.5">{member.memberSince || '—'}</td>
                   </tr>
                   <tr>
                     <td className="font-semibold text-[#071F25] py-0.5">Emergency contact</td>
                     <td className="text-stone-400 font-bold">:</td>
                     <td className="font-mono font-bold text-[#0D5A31] py-0.5">
-                      {member.emergencyContact?.phone || '+968 9876 5432'}
+                      {member.emergencyContact?.phone || '—'}
                     </td>
                   </tr>
                 </tbody>
@@ -596,7 +616,7 @@ export const MembershipCard: React.FC<MembershipCardProps> = ({ member }) => {
       {/* 1. INTERACTIVE 3D FLIP MODE                                               */}
       {/* ========================================================================= */}
       {viewMode === 'flip' && (
-        <div className="perspective-1000 w-full max-w-[480px] aspect-[1.589/1] min-h-[302px] relative no-print select-none">
+        <div className="perspective-1000 w-full max-w-[480px] aspect-[480/302] relative no-print select-none">
           <div
             onClick={() => setIsFlipped(!isFlipped)}
             className={`w-full h-full relative duration-500 transform-style-3d transition-transform cursor-pointer ${
@@ -625,7 +645,7 @@ export const MembershipCard: React.FC<MembershipCardProps> = ({ member }) => {
       {/* ========================================================================= */}
       {viewMode === 'sideBySide' && (
         <div className="w-full overflow-x-auto pb-4 no-print flex justify-center">
-          <div className="flex flex-col lg:flex-row items-center gap-6 p-4 rounded-3xl bg-[#F6F2E9] border border-amber-300/40 shadow-inner">
+          <div className="grid w-full max-w-[1000px] grid-cols-1 md:grid-cols-2 items-start gap-4 p-3 sm:p-4 rounded-3xl bg-[#F6F2E9] border border-amber-300/40 shadow-inner">
             <div>
               <div className="text-center text-[10px] font-bold uppercase tracking-wider text-stone-500 mb-1.5">
                 Front Side
@@ -646,7 +666,7 @@ export const MembershipCard: React.FC<MembershipCardProps> = ({ member }) => {
       {/* ========================================================================= */}
       {/* OFF-SCREEN HIGH-RES CAPTURE TARGET FOR SIDE-BY-SIDE EXPORT                */}
       {/* ========================================================================= */}
-      <div className="absolute -left-[9999px] top-0 pointer-events-none no-print">
+      <div className="absolute -left-[9999px] top-0 pointer-events-none no-print w-[480px]">
         {/* Render targets for individual Front and Back exports */}
         {renderFrontCard(true)}
         {renderBackCard(true)}
@@ -676,7 +696,7 @@ export const MembershipCard: React.FC<MembershipCardProps> = ({ member }) => {
             </p>
           </div>
 
-          <div className="flex flex-col sm:flex-row gap-6 justify-center items-center">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 justify-items-center">
             {renderFrontCard(false)}
             {renderBackCard(false)}
           </div>

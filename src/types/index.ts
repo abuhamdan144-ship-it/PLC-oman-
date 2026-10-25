@@ -27,6 +27,33 @@ export interface MemberProfile {
   role: MemberRole;
 }
 
+/** Minimal fields exposed by the public QR verifier; never include contact or ID data. */
+export interface PublicMemberProfile {
+  uid: string;
+  memberId: string;
+  fullName: string;
+  country: MemberCountry;
+  currentLocation: string;
+  photoURL?: string;
+  status: 'approved';
+  memberSince?: string;
+}
+
+export interface ElectionOption {
+  id: string;
+  label: string;
+}
+
+export interface CommunityElection {
+  title: string;
+  description: string;
+  options: ElectionOption[];
+  optionIds: string[];
+  status: 'open' | 'closed';
+  closesAt: import('firebase/firestore').Timestamp;
+  createdAt?: import('firebase/firestore').Timestamp;
+}
+
 export interface MemberNotification {
   id: string;
   title: string;

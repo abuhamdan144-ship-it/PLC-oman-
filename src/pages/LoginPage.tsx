@@ -2,12 +2,10 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { 
   signInWithEmailAndPassword, 
-  sendPasswordResetEmail,
-  createUserWithEmailAndPassword 
+  sendPasswordResetEmail
 } from 'firebase/auth';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
-import { useAuth } from '../hooks/useAuth';
 import { PakistanLabourCommunityLogo } from '../lib/logo';
 import { FlagPair } from '../lib/flags';
 import { 
@@ -17,17 +15,14 @@ import {
   AlertCircle, 
   CheckCircle2, 
   KeyRound, 
-  X,
-  ShieldCheck,
-  Sparkles
+  X
 } from 'lucide-react';
 
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
-  const { loginAsMasterAdmin } = useAuth();
 
-  const [email, setEmail] = useState('PLC@community.com');
-  const [password, setPassword] = useState('11223344');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -48,70 +43,6 @@ export const LoginPage: React.FC = () => {
     }
 
     setIsLoading(true);
-
-    const cleanEmail = email.trim().toLowerCase();
-    const isMasterAdmin = cleanEmail === 'plc@community.com' && password === '11223344';
-
-    // Instant seamless login for master admin credentials
-    if (isMasterAdmin) {
-      loginAsMasterAdmin();
-
-      // Also ensure synchronized in Firebase if available
-      try {
-        const cred = await signInWithEmailAndPassword(auth, 'plc@community.com', '11223344');
-        const ref = doc(db, 'members', cred.user.uid);
-        await setDoc(ref, {
-          fullName: 'Community Executive Administrator (PLC)',
-          email: 'plc@community.com',
-          mobile: '+968 2469 6991',
-          country: 'Oman',
-          currentLocation: 'Muscat, Sultanate of Oman',
-          idNumber: 'ADMIN-PLC-001',
-          status: 'approved',
-          role: 'admin',
-          memberId: 'PLC-2026-ADMIN',
-          memberSince: 'January 2026',
-          registeredAt: new Date().toISOString(),
-          approvedAt: new Date().toISOString(),
-          emergencyContact: {
-            name: 'Embassy Welfare Wing',
-            phone: '+968 2469 6991',
-            relation: 'Official'
-          }
-        }, { merge: true });
-      } catch (err: unknown) {
-        const c = typeof err === 'object' && err !== null && 'code' in err ? (err as { code: string }).code : '';
-        if (c === 'auth/user-not-found' || c === 'auth/invalid-credential') {
-          try {
-            const newCred = await createUserWithEmailAndPassword(auth, 'plc@community.com', '11223344');
-            await setDoc(doc(db, 'members', newCred.user.uid), {
-              fullName: 'Community Executive Administrator (PLC)',
-              email: 'plc@community.com',
-              mobile: '+968 2469 6991',
-              country: 'Oman',
-              currentLocation: 'Muscat, Sultanate of Oman',
-              idNumber: 'ADMIN-PLC-001',
-              status: 'approved',
-              role: 'admin',
-              memberId: 'PLC-2026-ADMIN',
-              memberSince: 'January 2026',
-              registeredAt: new Date().toISOString(),
-              approvedAt: new Date().toISOString(),
-              emergencyContact: {
-                name: 'Embassy Welfare Wing',
-                phone: '+968 2469 6991',
-                relation: 'Official'
-              }
-            });
-          } catch {
-            // Background sync note
-          }
-        }
-      }
-
-      navigate('/admin/registrations');
-      return;
-    }
 
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email.trim(), password);
@@ -237,29 +168,6 @@ export const LoginPage: React.FC = () => {
               </div>
             </div>
           )}
-
-          {/* Quick Preset for Admin Credentials */}
-          <div className="mb-5 p-3.5 rounded-xl bg-amber-50/90 border border-amber-300/90 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-            <div className="text-xs">
-              <span className="font-bold text-[#071F25] flex items-center gap-1.5">
-                <ShieldCheck className="w-4 h-4 text-[#0D5A31]" />
-                Official Administrator Preset:
-              </span>
-              <span className="font-mono text-emerald-900 text-[11px] font-bold">
-                PLC@community.com • 11223344
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                setEmail('PLC@community.com');
-                setPassword('11223344');
-              }}
-              className="px-3 py-1.5 text-xs font-bold bg-[#071F25] text-amber-300 hover:text-white rounded-lg hover:bg-[#0d343f] transition-colors shrink-0 shadow-xs"
-            >
-              Set Credentials
-            </button>
-          </div>
 
           <form onSubmit={handleLogin} className="space-y-4">
             

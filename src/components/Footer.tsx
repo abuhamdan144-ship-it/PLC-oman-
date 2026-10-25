@@ -50,8 +50,8 @@ export const Footer: React.FC = () => {
                 <span className="font-mono font-bold text-emerald-300">80077000 (Toll Free)</span>
               </li>
               <li className="flex flex-col">
-                <span className="text-stone-400">Embassy Community Welfare:</span>
-                <span className="font-mono font-bold text-amber-300">+968 2469 6991</span>
+                <span className="text-stone-400">Embassy of Pakistan, Muscat:</span>
+                <a href="tel:+96824603439" className="font-mono font-bold text-amber-300 hover:text-amber-200">+968 2460 3439</a>
               </li>
             </ul>
           </div>
