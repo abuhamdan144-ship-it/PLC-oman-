@@ -48,6 +48,13 @@ export const LoginPage: React.FC = () => {
       const userCredential = await signInWithEmailAndPassword(auth, email.trim(), password);
       const user = userCredential.user;
 
+      // This configured community administrator can enter the admin desk while
+      // the profile document refreshes after promotion in Firestore.
+      if (user.email?.toLowerCase() === 'plc@community.com') {
+        navigate('/admin/registrations');
+        return;
+      }
+
       // Check member profile document
       const memberDocSnap = await getDoc(doc(db, 'members', user.uid));
       

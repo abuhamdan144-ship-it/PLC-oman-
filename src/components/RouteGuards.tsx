@@ -152,6 +152,7 @@ const AdminAccessGate: React.FC<{ user: { uid: string; email: string | null }; m
 export const ProtectedAdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, member, loading } = useAuth();
   const location = useLocation();
+  const isConfiguredAdmin = user?.email?.toLowerCase() === 'plc@community.com';
 
   if (loading) {
     return <LoadingSkeleton message="Verifying administrator credentials..." />;
@@ -161,7 +162,7 @@ export const ProtectedAdminRoute: React.FC<{ children: React.ReactNode }> = ({ c
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  if (!member || member.role !== 'admin') {
+  if (!member || (member.role !== 'admin' && !isConfiguredAdmin)) {
     return <AdminAccessGate user={user} member={member} />;
   }
 
