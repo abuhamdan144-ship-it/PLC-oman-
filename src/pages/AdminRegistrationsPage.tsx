@@ -38,6 +38,7 @@ export const AdminRegistrationsPage: React.FC = () => {
   
   const [members, setMembers] = useState<MemberProfile[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'pending' | 'approved' | 'rejected' | 'all'>('pending');
   const [selectedMember, setSelectedMember] = useState<MemberProfile | null>(null);
@@ -65,11 +66,17 @@ export const AdminRegistrationsPage: React.FC = () => {
           } as MemberProfile);
         });
         setMembers(list);
+        setLoadError(null);
         setLoading(false);
       },
       (error) => {
         console.error('Could not load the member registry:', error.message);
         setMembers([]);
+        setLoadError(
+          error.code === 'permission-denied'
+            ? 'Firestore denied access to the member registry. Confirm this account has role: "admin" in the members collection and deploy the latest Firestore rules.'
+            : `Could not load the member registry: ${error.message}`,
+        );
         setLoading(false);
       }
     );
@@ -410,6 +417,12 @@ export const AdminRegistrationsPage: React.FC = () => {
             <div className="p-12 text-center text-xs text-stone-500 flex flex-col items-center">
               <RefreshCw className="w-6 h-6 animate-spin text-[#0D5A31] mb-2" />
               <span>Loading registered member files...</span>
+            </div>
+          ) : loadError ? (
+            <div className="p-12 text-center text-rose-700">
+              <AlertCircle className="w-12 h-12 text-rose-300 mx-auto mb-3" />
+              <p className="text-sm font-bold text-rose-900">Member registry could not be loaded</p>
+              <p className="text-xs text-rose-700 mt-2 max-w-xl mx-auto">{loadError}</p>
             </div>
           ) : filteredMembers.length === 0 ? (
             <div className="p-12 text-center text-stone-500">
