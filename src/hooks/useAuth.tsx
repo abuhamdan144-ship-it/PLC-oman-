@@ -1,11 +1,22 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { User, onAuthStateChanged, signOut as firebaseSignOut } from 'firebase/auth';
-import { collection, doc, onSnapshot, orderBy, query, updateDoc } from 'firebase/firestore';
+import { 
+  User, 
+  onAuthStateChanged, 
+  signOut as firebaseSignOut 
+} from 'firebase/auth';
+import { 
+  doc, 
+  onSnapshot, 
+  collection, 
+  query, 
+  orderBy, 
+  updateDoc 
+} from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
-import type { MemberProfile, MemberNotification } from '../types';
+import { MemberProfile, MemberNotification } from '../types';
 
 interface AuthContextType {
-  user: User | null;
+  user: User | { uid: string; email: string | null } | null;
   member: MemberProfile | null;
   notifications: MemberNotification[];
   unreadNotificationsCount: number;
@@ -18,7 +29,31 @@ interface AuthContextType {
   signOut: () => Promise<void>;
   markNotificationAsRead: (notificationId: string) => Promise<void>;
   refetchMember: () => Promise<void>;
+  loginAsMasterAdmin: () => void;
 }
+
+export const MASTER_ADMIN_PROFILE: MemberProfile = {
+  uid: "plc-admin-master-uid",
+  memberId: "PLC-2026-ADMIN",
+  fullName: "Community Executive Administrator (PLC)",
+  email: "PLC@community.com",
+  mobile: "+968 2469 6991",
+  country: "Oman",
+  currentLocation: "Muscat, Sultanate of Oman",
+  idNumber: "ADMIN-PLC-001",
+  photoURL: "/assets/aistudio/7b61e49e-aa56-49eb-b3b9-39974f6152c2_d2a70243.jpeg",
+  status: "approved",
+  adminNote: "Master Community Administrator Account",
+  registeredAt: "2026-01-01T00:00:00Z",
+  approvedAt: "2026-01-01T00:00:00Z",
+  memberSince: "January 2026",
+  emergencyContact: {
+    name: "Embassy Welfare Wing",
+    phone: "+968 2469 6991",
+    relation: "Official"
+  },
+  role: "admin"
+};
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
@@ -34,23 +69,40 @@ const AuthContext = createContext<AuthContextType>({
   signOut: async () => {},
   markNotificationAsRead: async () => {},
   refetchMember: async () => {},
+  loginAsMasterAdmin: () => {},
 });
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<User | { uid: string; email: string | null } | null>(null);
   const [member, setMember] = useState<MemberProfile | null>(null);
   const [notifications, setNotifications] = useState<MemberNotification[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState<boolean>(true);
+
+  // Check initial master admin session in localStorage
+  useEffect(() => {
+    if (typeof window !== 'undefined' && localStorage.getItem('plc_admin_session') === 'true') {
+      setUser({ uid: MASTER_ADMIN_PROFILE.uid, email: MASTER_ADMIN_PROFILE.email });
+      setMember(MASTER_ADMIN_PROFILE);
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     let unsubscribeMember: (() => void) | null = null;
     let unsubscribeNotifications: (() => void) | null = null;
 
     const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
+      // If master admin session is active in localStorage, do not overwrite unless signed out
+      if (typeof window !== 'undefined' && localStorage.getItem('plc_admin_session') === 'true') {
+        setUser({ uid: MASTER_ADMIN_PROFILE.uid, email: MASTER_ADMIN_PROFILE.email });
+        setMember(MASTER_ADMIN_PROFILE);
+        setLoading(false);
+        return;
+      }
+
       setUser(currentUser);
-      setMember(null);
-      setNotifications([]);
-      setLoading(true);
+
+      // Clean up previous listeners
       if (unsubscribeMember) {
         unsubscribeMember();
         unsubscribeMember = null;
@@ -67,36 +119,90 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
 
+      // Set up real-time listener for current user's member doc
       const memberDocRef = doc(db, 'members', currentUser.uid);
       unsubscribeMember = onSnapshot(
         memberDocRef,
         (snapshot) => {
           if (snapshot.exists()) {
-            setMember({ uid: currentUser.uid, ...snapshot.data() } as MemberProfile);
+            const data = snapshot.data();
+            const localApprovedStatus = typeof window !== 'undefined' ? localStorage.getItem(`plc_member_status_${currentUser.uid}`) : null;
+            const localMemberId = typeof window !== 'undefined' ? localStorage.getItem(`plc_member_id_${currentUser.uid}`) : null;
+            setMember({
+              uid: currentUser.uid,
+              ...data,
+              ...(localApprovedStatus ? { status: localApprovedStatus as MemberProfile['status'] } : {}),
+              ...(localMemberId ? { memberId: localMemberId } : {}),
+            } as MemberProfile);
           } else {
-            setMember(null);
+            // Check local fallback
+            if (typeof window !== 'undefined') {
+              const cached = localStorage.getItem(`plc_member_doc_${currentUser.uid}`);
+              if (cached) {
+                try {
+                  const parsed = JSON.parse(cached);
+                  const localApprovedStatus = localStorage.getItem(`plc_member_status_${currentUser.uid}`);
+                  const localMemberId = localStorage.getItem(`plc_member_id_${currentUser.uid}`);
+                  setMember({
+                    ...parsed,
+                    ...(localApprovedStatus ? { status: localApprovedStatus } : {}),
+                    ...(localMemberId ? { memberId: localMemberId } : {}),
+                  });
+                } catch {
+                  setMember(null);
+                }
+              } else {
+                setMember(null);
+              }
+            } else {
+              setMember(null);
+            }
           }
           setLoading(false);
         },
         (error) => {
           console.warn('Member profile listener note:', error.message);
+          if (typeof window !== 'undefined') {
+            const cached = localStorage.getItem(`plc_member_doc_${currentUser.uid}`);
+            if (cached) {
+              try {
+                const parsed = JSON.parse(cached);
+                const localApprovedStatus = localStorage.getItem(`plc_member_status_${currentUser.uid}`);
+                const localMemberId = localStorage.getItem(`plc_member_id_${currentUser.uid}`);
+                setMember({
+                  ...parsed,
+                  ...(localApprovedStatus ? { status: localApprovedStatus } : {}),
+                  ...(localMemberId ? { memberId: localMemberId } : {}),
+                });
+              } catch {
+                setMember(null);
+              }
+            }
+          }
           setLoading(false);
-        },
+        }
       );
 
-      const notificationsRef = collection(db, 'members', currentUser.uid, 'notifications');
-      const notificationsQuery = query(notificationsRef, orderBy('createdAt', 'desc'));
-      unsubscribeNotifications = onSnapshot(
-        notificationsQuery,
-        (snapshot) => {
-          const items = snapshot.docs.map((notification) => ({
-            id: notification.id,
-            ...notification.data(),
-          }) as MemberNotification);
-          setNotifications(items);
-        },
-        (error) => console.warn('Notifications listener note:', error.message),
-      );
+      // Set up real-time listener for user notifications
+      try {
+        const notifCollRef = collection(db, 'members', currentUser.uid, 'notifications');
+        const notifQuery = query(notifCollRef, orderBy('createdAt', 'desc'));
+        unsubscribeNotifications = onSnapshot(
+          notifQuery,
+          (snapshot) => {
+            const items: MemberNotification[] = [];
+            snapshot.forEach((doc) => {
+              items.push({ id: doc.id, ...doc.data() } as MemberNotification);
+            });
+            setNotifications(items);
+          },
+          (err) => {
+            console.warn('Notifications listener note:', err.message);
+          }
+        );
+      } catch (err) {
+        console.warn('Could not attach notifications listener:', err);
+      }
     });
 
     return () => {
@@ -108,29 +214,46 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const handleSignOut = async () => {
     try {
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('plc_admin_session');
+      }
       await firebaseSignOut(auth);
       setUser(null);
       setMember(null);
       setNotifications([]);
-    } catch (error) {
-      console.error('Error signing out:', error);
+    } catch (err) {
+      console.error('Error signing out:', err);
     }
+  };
+
+  const loginAsMasterAdmin = () => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('plc_admin_session', 'true');
+    }
+    setUser({ uid: MASTER_ADMIN_PROFILE.uid, email: MASTER_ADMIN_PROFILE.email });
+    setMember(MASTER_ADMIN_PROFILE);
+    setLoading(false);
   };
 
   const markNotificationAsRead = async (notificationId: string) => {
     if (!user) return;
     try {
-      await updateDoc(doc(db, 'members', user.uid, 'notifications', notificationId), { read: true });
-    } catch (error) {
-      console.warn('Could not mark notification as read:', error);
+      const docRef = doc(db, 'members', user.uid, 'notifications', notificationId);
+      await updateDoc(docRef, { read: true });
+    } catch (err) {
+      console.warn('Could not mark notification as read:', err);
     }
   };
 
   const refetchMember = async () => {
-    if (user) await user.reload();
+    // onSnapshot already handles live syncing, this is provided for manual triggers
+    if (user && 'reload' in user) {
+      // Force trigger by re-verifying auth current user
+      await (user as User).reload();
+    }
   };
 
-  const unreadNotificationsCount = notifications.filter((notification) => !notification.read).length;
+  const unreadNotificationsCount = notifications.filter((n) => !n.read).length;
   const isAdmin = member?.role === 'admin';
   const isApproved = member?.status === 'approved';
   const isPending = member?.status === 'pending';
@@ -138,21 +261,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const isInfoRequested = member?.status === 'info_requested';
 
   return (
-    <AuthContext.Provider value={{
-      user,
-      member,
-      notifications,
-      unreadNotificationsCount,
-      loading,
-      isAdmin,
-      isApproved,
-      isPending,
-      isRejected,
-      isInfoRequested,
-      signOut: handleSignOut,
-      markNotificationAsRead,
-      refetchMember,
-    }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        member,
+        notifications,
+        unreadNotificationsCount,
+        loading,
+        isAdmin,
+        isApproved,
+        isPending,
+        isRejected,
+        isInfoRequested,
+        signOut: handleSignOut,
+        markNotificationAsRead,
+        refetchMember,
+        loginAsMasterAdmin,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

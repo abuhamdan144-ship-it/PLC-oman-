@@ -122,7 +122,7 @@ export const Navbar: React.FC = () => {
                       }`}
                     >
                       <ShieldCheck className="w-4 h-4 text-amber-400" />
-                      Admin Registry
+                      Admin Dashboard (Approve Members)
                     </Link>
                   )}
 
@@ -330,7 +330,7 @@ export const Navbar: React.FC = () => {
                     className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-amber-300 hover:bg-white/10 font-bold"
                   >
                     <ShieldCheck className="w-4 h-4 text-amber-400" />
-                    Admin Registry Portal
+                    Admin Dashboard (Approve Members)
                   </Link>
 
                 <button

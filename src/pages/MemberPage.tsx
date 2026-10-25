@@ -1,187 +1,103 @@
-import React, { useEffect, useState } from 'react';
-import {
-  addDoc,
-  collection,
-  doc,
-  onSnapshot,
-  runTransaction,
-  serverTimestamp,
-  Timestamp,
-  updateDoc,
-} from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import {
-  AlertTriangle,
-  Calendar,
-  Check,
-  CreditCard,
-  Edit3,
-  ExternalLink,
-  FileText,
-  Newspaper,
-  PhoneCall,
-  Save,
-  ShieldCheck,
-  Upload,
-  User,
-  Vote,
-  type LucideIcon,
-} from 'lucide-react';
-import { MembershipCard } from '../components/MembershipCard';
-import { TermsModal } from '../components/TermsModal';
+import React, { useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
-import { compressImage } from '../lib/imageCompressor';
+import { MembershipCard } from '../components/MembershipCard';
+import { PakistanLabourCommunityLogo } from '../lib/logo';
 import { FlagPair } from '../lib/flags';
+import { compressImage } from '../lib/imageCompressor';
+import { doc, updateDoc, addDoc, collection } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../lib/firebase';
-import { officialNewsSources, portalContacts } from '../lib/portalResources';
-import type { CommunityElection, ElectionOption } from '../types';
-
-type MemberTab = 'member' | 'voting' | 'incidents' | 'contacts' | 'news';
-
-const memberTabs: { id: MemberTab; label: string; shortLabel: string; icon: LucideIcon }[] = [
-  { id: 'member', label: 'My membership', shortLabel: 'Member', icon: CreditCard },
-  { id: 'voting', label: 'Community vote', shortLabel: 'Voting', icon: Vote },
-  { id: 'incidents', label: 'Incident reports', shortLabel: 'Reports', icon: AlertTriangle },
-  { id: 'contacts', label: 'Emergency contacts', shortLabel: 'Contacts', icon: PhoneCall },
-  { id: 'news', label: 'News & rules', shortLabel: 'News', icon: Newspaper },
-];
-
-const incidentCategories = [
-  { value: 'death', label: 'Death / bereavement support' },
-  { value: 'injury', label: 'Injury / medical emergency' },
-  { value: 'lost', label: 'Lost person, item or document' },
-  { value: 'found', label: 'Found person or item' },
-  { value: 'wages', label: 'Unpaid wages / labour issue' },
-  { value: 'other', label: 'Other community welfare request' },
-];
+import { TermsModal } from '../components/TermsModal';
+import { 
+  ShieldCheck, 
+  CreditCard, 
+  User, 
+  PhoneCall, 
+  FileText, 
+  Vote, 
+  AlertOctagon, 
+  Check, 
+  Save, 
+  Edit3, 
+  Upload, 
+  MapPin, 
+  HeartHandshake, 
+  ExternalLink,
+  ShieldAlert,
+  HelpCircle,
+  Clock,
+  Copy,
+  AlertCircle
+} from 'lucide-react';
 
 export const MemberPage: React.FC = () => {
-  const { member, user } = useAuth();
-  const [activeTab, setActiveTab] = useState<MemberTab>('member');
-  const [showTermsModal, setShowTermsModal] = useState(false);
+  const { member, user, notifications, markNotificationAsRead } = useAuth();
 
+  // Active section tab
+  const [activeTab, setActiveTab] = useState<'card' | 'profile' | 'rules' | 'support' | 'incident' | 'voting'>('card');
+
+  // Profile update form state
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [editMobile, setEditMobile] = useState(member?.mobile || '');
   const [editLocation, setEditLocation] = useState(member?.currentLocation || '');
   const [editEmergencyName, setEditEmergencyName] = useState(member?.emergencyContact?.name || '');
   const [editEmergencyPhone, setEditEmergencyPhone] = useState(member?.emergencyContact?.phone || '');
-  const [editEmergencyRelation, setEditEmergencyRelation] = useState(member?.emergencyContact?.relation || 'Family');
+  const [editEmergencyRelation, setEditEmergencyRelation] = useState(member?.emergencyContact?.relation || '');
   const [newPhotoFile, setNewPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
-  const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
-  const [profileMessage, setProfileMessage] = useState<{ text: string; error: boolean } | null>(null);
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [updateMessage, setUpdateMessage] = useState<string | null>(null);
 
-  const [activeElectionId, setActiveElectionId] = useState<string | null>(null);
-  const [election, setElection] = useState<CommunityElection | null>(null);
-  const [electionLoading, setElectionLoading] = useState(true);
-  const [electionError, setElectionError] = useState('');
-  const [myVote, setMyVote] = useState<{ optionId: string } | null>(null);
-  const [selectedOptionId, setSelectedOptionId] = useState('');
-  const [isCastingVote, setIsCastingVote] = useState(false);
-  const [voteMessage, setVoteMessage] = useState('');
-
+  // Incident reporting form state
   const [incidentSubject, setIncidentSubject] = useState('');
-  const [incidentCategory, setIncidentCategory] = useState('death');
-  const [incidentUrgency, setIncidentUrgency] = useState('normal');
+  const [incidentCategory, setIncidentCategory] = useState('wages');
   const [incidentDetails, setIncidentDetails] = useState('');
-  const [incidentSubmitted, setIncidentSubmitted] = useState(false);
-  const [incidentError, setIncidentError] = useState('');
+  const [incidentUrgency, setIncidentUrgency] = useState('normal');
   const [isSubmittingIncident, setIsSubmittingIncident] = useState(false);
+  const [incidentSubmitted, setIncidentSubmitted] = useState(false);
 
-  useEffect(() => {
-    if (!member) return;
-    setEditMobile(member.mobile || '');
-    setEditLocation(member.currentLocation || '');
-    setEditEmergencyName(member.emergencyContact?.name || '');
-    setEditEmergencyPhone(member.emergencyContact?.phone || '');
-    setEditEmergencyRelation(member.emergencyContact?.relation || 'Family');
-  }, [member]);
+  // Community Charter Modal & Account Copy state
+  const [showTermsModal, setShowTermsModal] = useState(false);
+  const [copiedFundAccount, setCopiedFundAccount] = useState(false);
 
-  useEffect(() => {
-    const settingsRef = doc(db, 'settings', 'portal');
-    return onSnapshot(
-      settingsRef,
-      (snapshot) => {
-        setActiveElectionId(snapshot.exists() ? (snapshot.data().activeElectionId as string) || null : null);
-        setElectionError('');
-      },
-      (error) => {
-        console.error('Could not load the active community ballot:', error);
-        setElectionError('Voting is temporarily unavailable. Please try again later.');
-        setElectionLoading(false);
-      },
-    );
-  }, []);
-
-  useEffect(() => {
-    setElection(null);
-    setMyVote(null);
-    setSelectedOptionId('');
-    setVoteMessage('');
-    setElectionLoading(Boolean(activeElectionId));
-    if (!activeElectionId || !user) {
-      setElectionLoading(false);
-      return;
-    }
-
-    const electionRef = doc(db, 'elections', activeElectionId);
-    const voteRef = doc(db, 'elections', activeElectionId, 'votes', user.uid);
-    const stopElection = onSnapshot(
-      electionRef,
-      (snapshot) => {
-        setElection(snapshot.exists() ? (snapshot.data() as CommunityElection) : null);
-        setElectionLoading(false);
-      },
-      (error) => {
-        console.error('Could not load the election:', error);
-        setElectionError('The ballot could not be loaded. Please contact an administrator.');
-        setElectionLoading(false);
-      },
-    );
-    const stopVote = onSnapshot(
-      voteRef,
-      (snapshot) => {
-        setMyVote(snapshot.exists() ? (snapshot.data() as { optionId: string }) : null);
-      },
-      (error) => {
-        console.error('Could not load the member ballot:', error);
-      },
-    );
-    return () => {
-      stopElection();
-      stopVote();
-    };
-  }, [activeElectionId, user]);
-
-  if (!member) return null;
-
-  const handlePhotoSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    if (!file.type.startsWith('image/')) {
-      setProfileMessage({ text: 'Choose a valid image file.', error: true });
-      return;
-    }
-    setNewPhotoFile(file);
-    setPhotoPreview(URL.createObjectURL(file));
+  const handleCopyFundAccount = () => {
+    navigator.clipboard.writeText('96766876');
+    setCopiedFundAccount(true);
+    setTimeout(() => setCopiedFundAccount(false), 2000);
   };
 
-  const handleUpdateProfile = async (event: React.FormEvent) => {
-    event.preventDefault();
+  if (!member) {
+    return null;
+  }
+
+  const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      setNewPhotoFile(file);
+      setPhotoPreview(URL.createObjectURL(file));
+    }
+  };
+
+  const handleUpdateProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
     if (!user) return;
-    setIsUpdatingProfile(true);
-    setProfileMessage(null);
+    setIsUpdating(true);
+    setUpdateMessage(null);
 
     try {
-      let photoURL = member.photoURL || '';
+      let photoURL = member.photoURL;
+
       if (newPhotoFile) {
         const compressedBlob = await compressImage(newPhotoFile, 400 * 1024, 800);
         const storageRef = ref(storage, `profile-photos/${user.uid}/profile_${Date.now()}.jpg`);
-        const uploadResult = await uploadBytes(storageRef, compressedBlob, { contentType: 'image/jpeg' });
+        const uploadResult = await uploadBytes(storageRef, compressedBlob, {
+          contentType: 'image/jpeg',
+        });
         photoURL = await getDownloadURL(uploadResult.ref);
       }
 
-      await updateDoc(doc(db, 'members', user.uid), {
+      const memberDocRef = doc(db, 'members', user.uid);
+      await updateDoc(memberDocRef, {
         mobile: editMobile.trim(),
         currentLocation: editLocation.trim(),
         emergencyContact: {
@@ -189,465 +105,836 @@ export const MemberPage: React.FC = () => {
           phone: editEmergencyPhone.trim(),
           relation: editEmergencyRelation.trim() || 'Family',
         },
-        photoURL,
+        ...(photoURL ? { photoURL } : {}),
       });
 
-      // The QR page stores no private contact or identity fields. Keep only its public location/photo in sync.
-      try {
-        await updateDoc(doc(db, 'publicMembers', user.uid), {
-          currentLocation: editLocation.trim(),
-          photoURL,
-        });
-      } catch (publicRecordError) {
-        console.warn('Public verification record will need an admin sync:', publicRecordError);
-      }
-
-      setProfileMessage({ text: 'Your member details were updated.', error: false });
+      setUpdateMessage('Profile details updated successfully!');
       setIsEditingProfile(false);
-      setNewPhotoFile(null);
-      setPhotoPreview(null);
-    } catch (error) {
-      console.error('Profile update failed:', error);
-      setProfileMessage({ text: 'Could not save your details. Please check your connection and try again.', error: true });
+      setTimeout(() => setUpdateMessage(null), 4000);
+    } catch (err) {
+      console.error('Update profile error:', err);
+      setUpdateMessage('Failed to update details. Please try again.');
     } finally {
-      setIsUpdatingProfile(false);
+      setIsUpdating(false);
     }
   };
 
-  const resetProfileForm = () => {
-    setEditMobile(member.mobile || '');
-    setEditLocation(member.currentLocation || '');
-    setEditEmergencyName(member.emergencyContact?.name || '');
-    setEditEmergencyPhone(member.emergencyContact?.phone || '');
-    setEditEmergencyRelation(member.emergencyContact?.relation || 'Family');
-    setNewPhotoFile(null);
-    setPhotoPreview(null);
-    setProfileMessage(null);
-    setIsEditingProfile(false);
-  };
-
-  const handleCastVote = async () => {
-    if (!user || !activeElectionId || !election || !selectedOptionId) return;
-    setIsCastingVote(true);
-    setVoteMessage('');
-
-    try {
-      const electionRef = doc(db, 'elections', activeElectionId);
-      const voteRef = doc(db, 'elections', activeElectionId, 'votes', user.uid);
-      await runTransaction(db, async (transaction) => {
-        const electionSnapshot = await transaction.get(electionRef);
-        const voteSnapshot = await transaction.get(voteRef);
-        if (!electionSnapshot.exists()) throw new Error('This ballot is no longer available.');
-        if (voteSnapshot.exists()) throw new Error('Your vote has already been recorded for this ballot.');
-
-        const electionData = electionSnapshot.data();
-        const optionIds = (electionData.optionIds || []) as string[];
-        const closesAt = electionData.closesAt as Timestamp | undefined;
-        if (electionData.status !== 'open' || !closesAt || closesAt.toDate().getTime() <= Date.now()) {
-          throw new Error('This ballot is closed.');
-        }
-        if (!optionIds.includes(selectedOptionId)) throw new Error('Select one of the listed cabinet options.');
-
-        transaction.set(voteRef, {
-          memberUid: user.uid,
-          optionId: selectedOptionId,
-          submittedAt: serverTimestamp(),
-        });
-      });
-      setVoteMessage('Your vote has been recorded securely. You can vote only once in this ballot.');
-    } catch (error) {
-      console.error('Could not submit the member ballot:', error);
-      setVoteMessage(error instanceof Error ? error.message : 'Your vote could not be submitted. Please try again.');
-    } finally {
-      setIsCastingVote(false);
-    }
-  };
-
-  const handleSubmitIncident = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!user) return;
-    if (!incidentSubject.trim() || !incidentDetails.trim()) {
-      setIncidentError('Add a short subject and describe the situation so the welfare team can understand it.');
-      return;
-    }
+  const handleSubmitIncident = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!incidentDetails.trim()) return;
 
     setIsSubmittingIncident(true);
-    setIncidentError('');
     try {
-      await addDoc(collection(db, 'incidents'), {
-        memberUid: user.uid,
-        memberId: member.memberId || '',
-        memberName: member.fullName,
-        memberMobile: member.mobile,
-        subject: incidentSubject.trim(),
-        category: incidentCategory,
-        details: incidentDetails.trim(),
-        urgency: incidentUrgency,
-        createdAt: serverTimestamp(),
-        status: 'new',
-      });
+      if (user) {
+        await addDoc(collection(db, 'incidents'), {
+          memberUid: user.uid,
+          memberId: member.memberId || 'N/A',
+          memberName: member.fullName,
+          memberMobile: member.mobile,
+          subject: incidentSubject.trim() || 'Community Assistance Request',
+          category: incidentCategory,
+          details: incidentDetails.trim(),
+          urgency: incidentUrgency,
+          createdAt: new Date().toISOString(),
+          status: 'pending_case_worker'
+        });
+      }
       setIncidentSubmitted(true);
       setIncidentSubject('');
       setIncidentDetails('');
-      setIncidentUrgency('normal');
-    } catch (error) {
-      console.error('Could not submit the incident report:', error);
-      setIncidentError('Your report was not sent. Please check your connection or call an official emergency number if urgent.');
+      setTimeout(() => setIncidentSubmitted(false), 5000);
+    } catch (err) {
+      console.error('Error logging incident:', err);
     } finally {
       setIsSubmittingIncident(false);
     }
   };
 
-  const electionClosesAt = election?.closesAt?.toDate?.();
-  const ballotIsOpen = Boolean(
-    election && election.status === 'open' && electionClosesAt && electionClosesAt.getTime() > Date.now(),
-  );
-  const selectedVoteLabel = election?.options?.find((option: ElectionOption) => option.id === myVote?.optionId)?.label;
-
   return (
-    <div className="min-h-screen bg-[#F9F7F2] pb-24 md:pb-10">
-      <section className="bg-[#071F25] text-white border-b border-amber-500/30 px-4 py-5 sm:px-6 md:py-7">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-3">
-          <div className="min-w-0">
-            <div className="mb-1 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-300">
-              <ShieldCheck className="h-4 w-4" /> Approved member portal
-            </div>
-            <h1 className="truncate text-xl font-extrabold sm:text-2xl">Assalam-o-alaikum, {member.fullName.split(' ')[0]}</h1>
-            <p className="mt-1 flex flex-wrap items-center gap-x-2 text-xs text-stone-300">
-              <span className="font-mono text-amber-300">{member.memberId || 'Member ID pending'}</span>
-              <span aria-hidden="true">·</span>
-              <span>{member.currentLocation || member.country}</span>
-            </p>
+    <div className="min-h-screen bg-[#F9F7F2] pb-24">
+      
+      {/* Administrator Quick Notice Banner if Admin */}
+      {member.role === 'admin' && (
+        <div className="bg-[#E4AE2F] text-[#071F25] px-4 py-2.5 text-xs font-bold flex items-center justify-between shadow-md">
+          <div className="max-w-7xl mx-auto w-full flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <span className="flex items-center gap-2">
+              <ShieldCheck className="w-4 h-4 text-[#071F25]" />
+              <span>Administrator Portal: Review, verify, and approve registered members.</span>
+            </span>
+            <a
+              href="/admin/registrations"
+              className="inline-flex items-center gap-1.5 px-3 py-1 bg-[#071F25] hover:bg-[#0e3b46] text-white rounded-lg text-xs font-bold transition-colors w-fit"
+            >
+              <span>Go to Admin Approval Dashboard →</span>
+            </a>
           </div>
-          <FlagPair size="sm" />
         </div>
+      )}
 
-        <nav aria-label="Member portal sections" className="mx-auto mt-6 hidden max-w-6xl gap-2 overflow-x-auto md:flex">
-          {memberTabs.map(({ id, label, icon: Icon }) => (
+      {/* Approved Member Dashboard Header (Brand Authorized Logo usage) */}
+      <section className="bg-[#071F25] text-white border-b border-amber-500/20 pt-8 pb-10 px-4 sm:px-6 lg:px-8 no-print">
+        <div className="max-w-7xl mx-auto">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+            
+            <div className="flex items-start sm:items-center gap-4">
+              <div className="shrink-0">
+                <PakistanLabourCommunityLogo size={56} showText={false} />
+              </div>
+              <div>
+                <div className="flex flex-wrap items-center gap-2 mb-1">
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                    Active member
+                  </span>
+                  <span className="font-mono text-xs font-bold text-amber-300 bg-black/40 px-2 py-0.5 rounded border border-amber-400/30">
+                    {member.memberId || 'PLC-2026-ACTIVE'}
+                  </span>
+                  <FlagPair size="sm" />
+                </div>
+                <h1 className="text-xl sm:text-2xl lg:text-3xl font-extrabold font-heading text-white tracking-tight">
+                  Welcome, {member.fullName}
+                </h1>
+                <p className="text-xs text-stone-300 mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <span>Location: {member.currentLocation || member.country}</span>
+                  <span>•</span>
+                  <span>Member Since: {member.memberSince || '2026'}</span>
+                </p>
+              </div>
+            </div>
+
+            {/* Quick Actions */}
+            <div className="flex flex-wrap items-center gap-2.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab('card');
+                  window.scrollTo({ top: 400, behavior: 'smooth' });
+                }}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-[#E4AE2F] text-[#071F25] hover:bg-amber-400 transition-colors shadow-xs"
+              >
+                <CreditCard className="w-4 h-4" />
+                <span>View Card</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab('profile');
+                  setIsEditingProfile(true);
+                  window.scrollTo({ top: 450, behavior: 'smooth' });
+                }}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-white/10 hover:bg-white/20 text-white transition-colors"
+              >
+                <Edit3 className="w-4 h-4 text-emerald-300" />
+                <span>Update Details</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab('support');
+                  window.scrollTo({ top: 450, behavior: 'smooth' });
+                }}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-white/10 hover:bg-white/20 text-white transition-colors"
+              >
+                <PhoneCall className="w-4 h-4 text-amber-300" />
+                <span>Contact Support</span>
+              </button>
+            </div>
+
+          </div>
+
+          {/* Secondary Nav Tabs */}
+          <div className="flex items-center gap-1 overflow-x-auto mt-8 border-b border-white/10 pb-0.5 text-xs font-semibold scrollbar-none">
             <button
-              key={id}
-              type="button"
-              onClick={() => setActiveTab(id)}
-              aria-current={activeTab === id ? 'page' : undefined}
-              className={`inline-flex shrink-0 items-center gap-2 rounded-t-xl px-4 py-3 text-xs font-bold transition-colors ${
-                activeTab === id ? 'bg-[#F9F7F2] text-[#071F25]' : 'text-stone-300 hover:bg-white/10 hover:text-white'
+              onClick={() => setActiveTab('card')}
+              className={`flex items-center gap-1.5 px-4 py-2.5 rounded-t-xl transition-colors shrink-0 ${
+                activeTab === 'card'
+                  ? 'bg-[#F9F7F2] text-[#071F25] font-bold shadow-xs'
+                  : 'text-stone-300 hover:text-white hover:bg-white/5'
               }`}
             >
-              <Icon className="h-4 w-4" /> {label}
+              <CreditCard className="w-4 h-4 text-[#0D5A31]" />
+              <span>Membership Card</span>
             </button>
-          ))}
-        </nav>
+
+            <button
+              onClick={() => setActiveTab('profile')}
+              className={`flex items-center gap-1.5 px-4 py-2.5 rounded-t-xl transition-colors shrink-0 ${
+                activeTab === 'profile'
+                  ? 'bg-[#F9F7F2] text-[#071F25] font-bold shadow-xs'
+                  : 'text-stone-300 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <User className="w-4 h-4 text-[#0D5A31]" />
+              <span>Profile Details</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('rules')}
+              className={`flex items-center gap-1.5 px-4 py-2.5 rounded-t-xl transition-colors shrink-0 ${
+                activeTab === 'rules'
+                  ? 'bg-[#F9F7F2] text-[#071F25] font-bold shadow-xs'
+                  : 'text-stone-300 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <FileText className="w-4 h-4 text-[#0D5A31]" />
+              <span>Community Rules & Law</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('support')}
+              className={`flex items-center gap-1.5 px-4 py-2.5 rounded-t-xl transition-colors shrink-0 ${
+                activeTab === 'support'
+                  ? 'bg-[#F9F7F2] text-[#071F25] font-bold shadow-xs'
+                  : 'text-stone-300 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <PhoneCall className="w-4 h-4 text-[#0D5A31]" />
+              <span>Helpline & Support</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('incident')}
+              className={`flex items-center gap-1.5 px-4 py-2.5 rounded-t-xl transition-colors shrink-0 ${
+                activeTab === 'incident'
+                  ? 'bg-[#F9F7F2] text-[#071F25] font-bold shadow-xs'
+                  : 'text-stone-300 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <AlertOctagon className="w-4 h-4 text-[#0D5A31]" />
+              <span>Incident Reporting</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('voting')}
+              className={`flex items-center gap-1.5 px-4 py-2.5 rounded-t-xl transition-colors shrink-0 ${
+                activeTab === 'voting'
+                  ? 'bg-[#F9F7F2] text-[#071F25] font-bold shadow-xs'
+                  : 'text-stone-300 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <Vote className="w-4 h-4 text-[#0D5A31]" />
+              <span>Voting</span>
+            </button>
+          </div>
+
+        </div>
       </section>
 
-      <main className="mx-auto max-w-6xl px-4 pt-5 sm:px-6 md:pt-7">
-        {profileMessage && activeTab === 'member' && (
-          <div role="status" className={`mb-4 rounded-xl border p-3 text-sm ${profileMessage.error ? 'border-rose-200 bg-rose-50 text-rose-800' : 'border-emerald-200 bg-emerald-50 text-emerald-800'}`}>
-            {profileMessage.text}
+      {/* Main Content Area */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8">
+        
+        {updateMessage && (
+          <div className="mb-6 p-4 rounded-xl bg-emerald-100 border border-emerald-300 text-emerald-900 text-xs sm:text-sm font-semibold flex items-center gap-2 animate-in fade-in">
+            <Check className="w-5 h-5 text-emerald-700" />
+            <span>{updateMessage}</span>
           </div>
         )}
 
-        {activeTab === 'member' && (
-          <section className="space-y-4 animate-in fade-in duration-150">
-            <div className="rounded-3xl border border-stone-200 bg-white p-4 shadow-sm sm:p-7">
-              <div className="mb-4 text-center">
-                <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-800">Your digital membership</p>
-                <h2 className="mt-1 text-lg font-bold text-[#071F25] sm:text-xl">Membership card</h2>
+        {/* TAB 1: MEMBERSHIP CARD */}
+        {activeTab === 'card' && (
+          <div className="space-y-8 animate-in fade-in duration-150">
+            <div className="bg-white rounded-3xl shadow-xl border border-stone-200/80 p-6 sm:p-10 flex flex-col items-center">
+              
+              <div className="text-center max-w-md mb-6">
+                <span className="text-xs font-bold uppercase tracking-wider text-[#0D5A31]">
+                  Official Digital Credential
+                </span>
+                <h2 className="text-xl sm:text-2xl font-bold font-heading text-[#071F25] mt-1">
+                  Double-Sided Membership Card
+                </h2>
+                <p className="text-xs text-stone-500 mt-1">
+                  Click 'Flip' or use toggle button below to inspect Front and Back. Print or download for offline verification.
+                </p>
               </div>
+
+              {/* Renders the double-sided card with strict flag & logo compliance */}
               <MembershipCard member={member} />
+
             </div>
 
-            <div className="rounded-3xl border border-stone-200 bg-white p-5 shadow-sm sm:p-7">
-              <div className="mb-5 flex items-center justify-between gap-3 border-b border-stone-100 pb-4">
+            {/* Quick Profile Summary Card */}
+            <div className="bg-white rounded-2xl p-6 shadow-sm border border-stone-200">
+              <div className="flex items-center justify-between border-b border-stone-100 pb-4 mb-4">
                 <div className="flex items-center gap-2">
-                  <User className="h-5 w-5 text-emerald-800" />
-                  <div>
-                    <h2 className="font-bold text-[#071F25]">Member details</h2>
-                    <p className="text-xs text-stone-500">Your registration and contact information</p>
-                  </div>
+                  <User className="w-5 h-5 text-[#0D5A31]" />
+                  <h3 className="font-bold text-[#071F25] text-base">Community Member Record</h3>
                 </div>
-                {!isEditingProfile && (
-                  <button
-                    type="button"
-                    onClick={() => { setIsEditingProfile(true); setProfileMessage(null); }}
-                    className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-emerald-200 px-3 py-2 text-xs font-bold text-emerald-900 hover:bg-emerald-50"
-                  >
-                    <Edit3 className="h-3.5 w-3.5" /> Edit
-                  </button>
-                )}
+                <button
+                  onClick={() => {
+                    setActiveTab('profile');
+                    setIsEditingProfile(true);
+                  }}
+                  className="text-xs font-bold text-[#0D5A31] hover:underline"
+                >
+                  Edit profile details →
+                </button>
               </div>
 
-              {!isEditingProfile ? (
-                <>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                    <Detail label="Full name" value={member.fullName} />
-                    <Detail label="Membership ID" value={member.memberId || 'Pending'} mono />
-                    <Detail label="Status" value="Approved member" />
-                    <Detail label="Country" value={member.country} />
-                    <Detail label="Current location" value={member.currentLocation || 'Not provided'} />
-                    <Detail label="Member since" value={member.memberSince || '—'} />
-                    <Detail label="Mobile number" value={member.mobile || 'Not provided'} />
-                    <Detail label="Email" value={member.email || 'Not provided'} />
-                    <Detail label="Emergency contact" value={`${member.emergencyContact?.name || 'Not provided'} · ${member.emergencyContact?.phone || '—'}`} />
-                  </div>
-                  <div className="mt-4 rounded-xl bg-stone-50 p-3 text-xs text-stone-600">
-                    Your verified identity details are protected and are not shown on the public QR verification page.
-                  </div>
-                </>
-              ) : (
-                <form onSubmit={handleUpdateProfile} className="space-y-4">
-                  <div className="flex items-center gap-4 rounded-xl border border-stone-200 p-3">
-                    {photoPreview || member.photoURL ? (
-                      <img src={photoPreview || member.photoURL} alt="Member profile" className="h-16 w-14 rounded-lg border border-amber-300 object-cover" />
-                    ) : (
-                      <div className="flex h-16 w-14 items-center justify-center rounded-lg bg-emerald-50 text-xl font-bold text-emerald-900">{member.fullName.charAt(0)}</div>
-                    )}
-                    <div>
-                      <p className="text-sm font-semibold text-[#071F25]">Card photo</p>
-                      <label className="mt-1 inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-stone-300 px-3 py-2 text-xs font-semibold hover:bg-stone-50">
-                        <Upload className="h-3.5 w-3.5" /> Choose photo
-                        <input type="file" accept="image/*" onChange={handlePhotoSelect} className="sr-only" />
-                      </label>
-                    </div>
-                  </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
+                <div>
+                  <span className="text-stone-400 block uppercase text-[10px]">Official Member ID</span>
+                  <span className="font-mono font-bold text-base text-emerald-800">{member.memberId || 'N/A'}</span>
+                </div>
+                <div>
+                  <span className="text-stone-400 block uppercase text-[10px]">National ID / Passport</span>
+                  <span className="font-mono font-semibold text-stone-800">{member.idNumber}</span>
+                </div>
+                <div>
+                  <span className="text-stone-400 block uppercase text-[10px]">Country of Residence</span>
+                  <span className="font-semibold text-stone-800">{member.country} ({member.currentLocation})</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <FormField label="Mobile number" value={editMobile} onChange={setEditMobile} type="tel" />
-                    <FormField label="Current city / wilayat" value={editLocation} onChange={setEditLocation} />
-                    <FormField label="Emergency contact name" value={editEmergencyName} onChange={setEditEmergencyName} />
-                    <FormField label="Emergency contact phone" value={editEmergencyPhone} onChange={setEditEmergencyPhone} type="tel" />
-                    <FormField label="Emergency contact relation" value={editEmergencyRelation} onChange={setEditEmergencyRelation} />
-                  </div>
-                  <div className="flex justify-end gap-2 border-t border-stone-100 pt-4">
-                    <button type="button" onClick={resetProfileForm} className="rounded-lg px-4 py-2 text-xs font-semibold text-stone-600 hover:bg-stone-100">Cancel</button>
-                    <button type="submit" disabled={isUpdatingProfile} className="inline-flex items-center gap-2 rounded-lg bg-emerald-900 px-4 py-2 text-xs font-bold text-white disabled:opacity-50">
-                      <Save className="h-4 w-4" /> {isUpdatingProfile ? 'Saving…' : 'Save details'}
-                    </button>
-                  </div>
-                </form>
+        {/* TAB 2: PROFILE DETAILS & UPDATE FORM */}
+        {activeTab === 'profile' && (
+          <div className="max-w-3xl mx-auto bg-white rounded-3xl shadow-xl border border-stone-200 p-6 sm:p-10 animate-in fade-in duration-150">
+            <div className="flex items-center justify-between border-b border-stone-200 pb-4 mb-6">
+              <div>
+                <h2 className="text-xl font-bold font-heading text-[#071F25]">
+                  Profile Details & Settings
+                </h2>
+                <p className="text-xs text-stone-500 mt-1">
+                  Keep your phone, location, and emergency contact up to date for community alerts.
+                </p>
+              </div>
+              {!isEditingProfile && (
+                <button
+                  type="button"
+                  onClick={() => setIsEditingProfile(true)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-[#0D5A31] text-white hover:bg-[#094224]"
+                >
+                  <Edit3 className="w-3.5 h-3.5" />
+                  <span>Edit Details</span>
+                </button>
               )}
             </div>
-          </section>
-        )}
 
-        {activeTab === 'voting' && (
-          <section className="mx-auto max-w-3xl animate-in fade-in duration-150">
-            <PanelHeading icon={Vote} eyebrow="Member ballot" title="Choose your community cabinet" description="Voting is available only to approved members. Each member can submit one ballot for each election." />
-            {electionError && <MessageBox tone="error">{electionError}</MessageBox>}
-            {electionLoading ? (
-              <LoadingCard label="Loading the current ballot…" />
-            ) : !activeElectionId || !election ? (
-              <EmptyCard title="No active ballot" body="The community administrator has not published a cabinet election yet. Check back later." />
-            ) : (
-              <div className="rounded-3xl border border-stone-200 bg-white p-5 shadow-sm sm:p-7">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <span className={`rounded-full px-3 py-1 text-[11px] font-bold uppercase tracking-wide ${ballotIsOpen ? 'bg-emerald-100 text-emerald-900' : 'bg-stone-100 text-stone-600'}`}>
-                    {ballotIsOpen ? 'Open ballot' : 'Closed ballot'}
-                  </span>
-                  {electionClosesAt && <span className="inline-flex items-center gap-1.5 text-xs text-stone-500"><Calendar className="h-4 w-4" /> Closes {electionClosesAt.toLocaleString()}</span>}
+            {/* Read-Only Non-Editable Administrative Credentials */}
+            <div className="bg-[#FAF7F2] p-4 rounded-xl border border-stone-200 mb-6 space-y-3">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-stone-600 block">
+                Administrative System Record (Locked)
+              </span>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                <div>
+                  <span className="text-stone-400 block text-[10px]">Member ID</span>
+                  <span className="font-mono font-bold text-[#0D5A31]">{member.memberId || 'N/A'}</span>
                 </div>
-                <h2 className="mt-4 text-xl font-bold text-[#071F25]">{election.title}</h2>
-                <p className="mt-2 text-sm leading-relaxed text-stone-600">{election.description}</p>
-
-                {myVote ? (
-                  <div className="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-4" role="status">
-                    <div className="flex items-start gap-3">
-                      <Check className="mt-0.5 h-5 w-5 shrink-0 text-emerald-800" />
-                      <div>
-                        <p className="font-bold text-emerald-950">Your ballot has been submitted</p>
-                        <p className="mt-1 text-sm text-emerald-900">{selectedVoteLabel || 'Your selection is recorded.'} You cannot vote again in this election.</p>
-                      </div>
-                    </div>
-                  </div>
-                ) : ballotIsOpen ? (
-                  <div className="mt-6 space-y-3">
-                    {(election.options || []).map((option) => (
-                      <label key={option.id} className={`flex cursor-pointer items-start gap-3 rounded-2xl border p-4 transition-colors ${selectedOptionId === option.id ? 'border-emerald-700 bg-emerald-50' : 'border-stone-200 hover:border-emerald-300'}`}>
-                        <input type="radio" name="cabinet-option" value={option.id} checked={selectedOptionId === option.id} onChange={() => setSelectedOptionId(option.id)} className="mt-1 h-4 w-4 accent-emerald-800" />
-                        <span className="font-semibold text-[#071F25]">{option.label}</span>
-                      </label>
-                    ))}
-                    <button type="button" onClick={handleCastVote} disabled={!selectedOptionId || isCastingVote} className="mt-2 w-full rounded-xl bg-[#071F25] px-4 py-3 text-sm font-bold text-white hover:bg-emerald-900 disabled:cursor-not-allowed disabled:opacity-50">
-                      {isCastingVote ? 'Submitting ballot…' : 'Submit my vote'}
-                    </button>
-                    {voteMessage && <MessageBox tone="info">{voteMessage}</MessageBox>}
-                    <p className="text-center text-[11px] text-stone-500">Please check your choice before submitting. A submitted ballot cannot be changed.</p>
-                  </div>
-                ) : (
-                  <div className="mt-6 rounded-xl bg-stone-50 p-4 text-sm text-stone-600">This ballot is closed. The administrator can publish a new election when the next cabinet selection opens.</div>
-                )}
+                <div>
+                  <span className="text-stone-400 block text-[10px]">CNIC / Passport #</span>
+                  <span className="font-mono font-semibold text-stone-700">{member.idNumber}</span>
+                </div>
+                <div>
+                  <span className="text-stone-400 block text-[10px]">Membership Status</span>
+                  <span className="font-semibold text-emerald-700 uppercase">{member.status}</span>
+                </div>
               </div>
-            )}
-          </section>
-        )}
-
-        {activeTab === 'incidents' && (
-          <section className="mx-auto max-w-2xl animate-in fade-in duration-150">
-            <PanelHeading icon={AlertTriangle} eyebrow="Community welfare" title="Report an incident" description="Submit a death, injury, lost/found, labour or other welfare report to the approved community team." />
-            <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">
-              If anyone is in immediate danger, call <a href="tel:9999" className="font-extrabold underline">ROP emergency 9999</a> first. Do not wait for a portal reply.
+              <p className="text-[10px] text-stone-500 italic">
+                * Note: Full name, CNIC/Passport, Member ID, and status are protected civic fields and cannot be modified by members.
+              </p>
             </div>
+
+            {/* Form */}
+            <form onSubmit={handleUpdateProfile} className="space-y-6">
+              
+              {/* Photo */}
+              <div className="flex items-center gap-4 p-4 rounded-xl border border-stone-200">
+                <img
+                  src={photoPreview || member.photoURL || 'https://via.placeholder.com/150'}
+                  alt="Member Photo"
+                  className="w-16 h-20 object-cover rounded-lg border-2 border-[#E4AE2F]"
+                />
+                <div>
+                  <label className="block text-xs font-bold text-[#071F25] mb-1">
+                    Card Profile Photo
+                  </label>
+                  {isEditingProfile ? (
+                    <div>
+                      <label className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-stone-300 rounded-lg text-xs font-semibold cursor-pointer hover:bg-stone-50">
+                        <Upload className="w-3.5 h-3.5" />
+                        <span>Upload New Photo</span>
+                        <input type="file" accept="image/*" onChange={handlePhotoSelect} className="sr-only" />
+                      </label>
+                      <p className="text-[10px] text-stone-500 mt-1">Compressed automatically under 500 KB.</p>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-stone-500">Current photo active on digital card</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Editable Fields */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label htmlFor="edit-mobile" className="block text-xs font-bold text-[#071F25] mb-1">
+                    Mobile Phone Number
+                  </label>
+                  <input
+                    id="edit-mobile"
+                    type="tel"
+                    disabled={!isEditingProfile}
+                    value={editMobile}
+                    onChange={(e) => setEditMobile(e.target.value)}
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-stone-300 disabled:bg-stone-100 disabled:text-stone-600 focus:ring-2 focus:ring-[#0D5A31]"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="edit-location" className="block text-xs font-bold text-[#071F25] mb-1">
+                    Current Location / Wilayat
+                  </label>
+                  <input
+                    id="edit-location"
+                    type="text"
+                    disabled={!isEditingProfile}
+                    value={editLocation}
+                    onChange={(e) => setEditLocation(e.target.value)}
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-stone-300 disabled:bg-stone-100 disabled:text-stone-600 focus:ring-2 focus:ring-[#0D5A31]"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="edit-emerg-name" className="block text-xs font-bold text-[#071F25] mb-1">
+                    Emergency Contact Name & Relation
+                  </label>
+                  <input
+                    id="edit-emerg-name"
+                    type="text"
+                    disabled={!isEditingProfile}
+                    value={editEmergencyName}
+                    onChange={(e) => setEditEmergencyName(e.target.value)}
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-stone-300 disabled:bg-stone-100 disabled:text-stone-600 focus:ring-2 focus:ring-[#0D5A31]"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="edit-emerg-phone" className="block text-xs font-bold text-[#071F25] mb-1">
+                    Emergency Contact Phone
+                  </label>
+                  <input
+                    id="edit-emerg-phone"
+                    type="tel"
+                    disabled={!isEditingProfile}
+                    value={editEmergencyPhone}
+                    onChange={(e) => setEditEmergencyPhone(e.target.value)}
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-stone-300 disabled:bg-stone-100 disabled:text-stone-600 focus:ring-2 focus:ring-[#0D5A31]"
+                  />
+                </div>
+              </div>
+
+              {isEditingProfile && (
+                <div className="flex items-center justify-end gap-3 pt-4 border-t border-stone-200">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsEditingProfile(false);
+                      setEditMobile(member.mobile);
+                      setEditLocation(member.currentLocation);
+                      setEditEmergencyName(member.emergencyContact?.name || '');
+                      setEditEmergencyPhone(member.emergencyContact?.phone || '');
+                      setNewPhotoFile(null);
+                      setPhotoPreview(null);
+                    }}
+                    className="px-4 py-2 text-xs font-semibold text-stone-600 hover:bg-stone-100 rounded-lg"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isUpdating}
+                    className="inline-flex items-center gap-1.5 px-5 py-2 rounded-xl text-xs font-bold bg-[#0D5A31] text-white hover:bg-[#094224] shadow-sm disabled:opacity-50"
+                  >
+                    <Save className="w-4 h-4" />
+                    <span>{isUpdating ? 'Saving...' : 'Save Changes'}</span>
+                  </button>
+                </div>
+              )}
+            </form>
+          </div>
+        )}
+
+        {/* TAB 3: COMMUNITY RULES & WORKER RIGHTS IN OMAN */}
+        {activeTab === 'rules' && (
+          <div className="max-w-4xl mx-auto space-y-6 animate-in fade-in duration-150">
+            {/* Official Urdu Community Charter Card */}
+            <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-stone-200 space-y-6">
+              <div className="border-b border-stone-200 pb-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-11 h-11 rounded-2xl bg-[#071F25] text-[#E4AE2F] flex items-center justify-center font-bold">
+                    <FileText className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg sm:text-xl font-bold font-heading text-[#071F25]">
+                      پاکستان کمیونٹی عمان — اہم وضاحت و فلاحی ضوابط
+                    </h2>
+                    <p className="text-xs text-amber-700 font-semibold">
+                      Official Community Welfare Charter & Support Guidelines
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowTermsModal(true)}
+                  className="px-4 py-2 bg-[#0D5A31] hover:bg-[#094224] text-white rounded-xl text-xs font-bold transition-colors shrink-0 shadow-xs"
+                >
+                  پورا چارٹر دیکھیں (Open Dialog)
+                </button>
+              </div>
+
+              {/* Urdu RTL Body */}
+              <div className="space-y-4 text-stone-800" dir="rtl">
+                <div className="flex items-center justify-between border-b border-stone-100 pb-2">
+                  <p className="text-sm font-bold text-emerald-950 font-serif">
+                    السلام علیکم ورحمۃ اللہ وبرکاتہ — میرے پیارے پاکستانی بھائیو!
+                  </p>
+                  <FlagPair size="sm" />
+                </div>
+
+                {/* Scope clarification */}
+                <div className="p-4 rounded-2xl bg-amber-50/90 border border-amber-300 space-y-2">
+                  <div className="flex items-center gap-2 text-amber-950 font-bold text-sm">
+                    <AlertCircle className="w-5 h-5 text-amber-700 shrink-0" />
+                    <span>کمیونٹی کا اصل دائرہ کار:</span>
+                  </div>
+                  <p className="text-xs sm:text-sm text-stone-700 leading-relaxed font-medium">
+                    پاکستان کمیونٹی عمان ہم نے اس مقصد کے لیے نہیں بنائی کہ کسی بھائی کا ویزا ختم ہو گیا ہو، ارباب کے ساتھ مسئلہ ہو، پیٹ میں درد یا معمولی بیماری ہو، یا کسی دوسرے ذاتی مسئلے کے لیے کمیونٹی سے رابطہ کیا جائے۔
+                  </p>
+                  <p className="text-xs sm:text-sm text-amber-950 font-bold leading-relaxed">
+                    ہماری کمیونٹی کا اصل مقصد پاکستانی بھائیوں کے ساتھ بڑے اور مشکل حالات میں مدد اور باہمی تعاون کرنا ہے۔
+                  </p>
+                </div>
+
+                {/* Welfare Provisions Grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+                  {/* Death Benefit */}
+                  <div className="p-4 rounded-2xl bg-emerald-50/80 border-2 border-emerald-300 space-y-2">
+                    <span className="inline-block px-2.5 py-0.5 rounded-md bg-emerald-800 text-white text-xs font-bold">
+                      وفات کی صورت میں
+                    </span>
+                    <ul className="text-xs sm:text-sm text-emerald-950 font-bold space-y-1 list-disc pr-4">
+                      <li>مرحوم کی میت پاکستان بھیجنے کے لیے ایک ہوائی ٹکٹ۔</li>
+                      <li>2000 عمانی ریال (2,000 OMR) کی مالی امداد دی جائے گی۔</li>
+                    </ul>
+                  </div>
+
+                  {/* Severe Accident */}
+                  <div className="p-4 rounded-2xl bg-amber-50/80 border-2 border-amber-300 space-y-2">
+                    <span className="inline-block px-2.5 py-0.5 rounded-md bg-amber-800 text-white text-xs font-bold">
+                      شدید حادثہ یا بڑی بیماری
+                    </span>
+                    <p className="text-xs sm:text-sm text-amber-950 font-medium leading-relaxed">
+                      اگر کسی بھائی کی کمر یا گردن ٹوٹ جائے، ہارٹ اٹیک ہو جائے یا کوئی بڑا مسئلہ پیش آئے:
+                    </p>
+                    <p className="text-xs sm:text-sm text-amber-950 font-bold">
+                      • کمیونٹی کی طرف سے 1000 عمانی ریال (1,000 OMR) کی مالی مدد دی جائے گی، ان شاء اللہ۔
+                    </p>
+                  </div>
+                </div>
+
+                {/* Mandatory Registration Condition */}
+                <div className="p-3.5 rounded-2xl bg-rose-50 border-2 border-rose-300 text-rose-950 flex items-start gap-3">
+                  <ShieldAlert className="w-5 h-5 text-rose-700 shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <span className="font-bold text-xs sm:text-sm text-rose-900 block">
+                      لازمی اہلیت کی شرط (Mandatory Registration Prerequisite):
+                    </span>
+                    <p className="text-xs sm:text-sm font-bold text-rose-950 leading-relaxed">
+                      یہ سب سہولیات صرف کمونٹی کے ساتھ داحلہ یا رجسٹریشن کیا ہو اس ممبر کو میسر ہوگی۔
+                    </p>
+                    <p className="text-[11px] text-rose-800">
+                      (All assistance and benefits are exclusively available to approved members registered with Pakistan Labour Community.)
+                    </p>
+                  </div>
+                </div>
+
+                {/* Account Number Box */}
+                <div className="p-4 rounded-2xl bg-[#071F25] text-white flex flex-col sm:flex-row items-center justify-between gap-3">
+                  <div className="space-y-1 text-center sm:text-right">
+                    <div className="flex items-center gap-2 justify-center sm:justify-start">
+                      <HeartHandshake className="w-5 h-5 text-[#E4AE2F]" />
+                      <span className="text-xs font-bold text-amber-300">
+                        تنظیم کا آفیشل اکاؤنٹ نمبر برائے فنڈ و تعاون:
+                      </span>
+                    </div>
+                    <p className="text-xs text-stone-300">
+                      جو بھائی فنڈ میں حصہ ڈالنا چاہتے ہیں، وہ اس اکاؤنٹ پر تعاون جمع کر سکتے ہیں۔
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <div className="bg-black/50 px-4 py-2 rounded-xl border border-amber-500/40 text-center">
+                      <span className="font-mono text-xl sm:text-2xl font-bold text-[#E4AE2F] tracking-widest">
+                        96766876
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleCopyFundAccount}
+                      className="px-3.5 py-2 bg-amber-400 hover:bg-amber-300 text-[#071F25] rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors"
+                    >
+                      {copiedFundAccount ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                      <span>{copiedFundAccount ? 'کاپی ہو گیا' : 'کاپی'}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Prayer */}
+                <p className="text-xs text-stone-600 italic text-center font-serif pt-1">
+                  اللہ تعالیٰ ہمارے درمیان اتحاد و بھائی چارہ قائم رکھے، اور ہماری اس خدمت کو قبول فرمائے۔ آمین۔
+                </p>
+              </div>
+            </div>
+
+            {/* Standard Labour Regulations Box */}
+            <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-stone-200">
+              <h2 className="text-xl font-bold font-heading text-[#071F25] mb-2">
+                Oman Labour Regulations & Worker Rights Handbook
+              </h2>
+              <p className="text-xs text-stone-600 mb-6 leading-relaxed">
+                Key protections codified under Sultanate of Oman Royal Decree and Ministry of Labour guidelines for expatriate workforce members.
+              </p>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="p-4 rounded-2xl bg-stone-50 border border-stone-200 space-y-2">
+                  <h3 className="font-bold text-xs uppercase tracking-wider text-[#0D5A31] flex items-center gap-2">
+                    <ShieldCheck className="w-4 h-4 text-[#0D5A31]" />
+                    Passport Retention Law
+                  </h3>
+                  <p className="text-xs text-stone-600 leading-relaxed">
+                    Under Omani Labour Law and human rights directives, withholding an employee's original passport is strictly prohibited. Your passport remains your personal property at all times.
+                  </p>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-stone-50 border border-stone-200 space-y-2">
+                  <h3 className="font-bold text-xs uppercase tracking-wider text-[#0D5A31] flex items-center gap-2">
+                    <ShieldCheck className="w-4 h-4 text-[#0D5A31]" />
+                    Midday Summer Work Ban
+                  </h3>
+                  <p className="text-xs text-stone-600 leading-relaxed">
+                    Outdoor labour is legally halted between 12:30 PM and 3:30 PM during the peak summer months (June, July, August) to prevent heat stress and dehydration.
+                  </p>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-stone-50 border border-stone-200 space-y-2">
+                  <h3 className="font-bold text-xs uppercase tracking-wider text-[#0D5A31] flex items-center gap-2">
+                    <ShieldCheck className="w-4 h-4 text-[#0D5A31]" />
+                    Wage Protection System (WPS)
+                  </h3>
+                  <p className="text-xs text-stone-600 leading-relaxed">
+                    All salaries must be transferred directly into certified local bank accounts within seven days of the end of each pay cycle.
+                  </p>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-stone-50 border border-stone-200 space-y-2">
+                  <h3 className="font-bold text-xs uppercase tracking-wider text-[#0D5A31] flex items-center gap-2">
+                    <ShieldCheck className="w-4 h-4 text-[#0D5A31]" />
+                    End of Service Gratuity
+                  </h3>
+                  <p className="text-xs text-stone-600 leading-relaxed">
+                    Expatriate workers who complete one full year of service are entitled to statutory end-of-service gratuity calculated on basic salary.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* TAB 4: HELPLINE & EMBASSY SUPPORT */}
+        {activeTab === 'support' && (
+          <div className="max-w-4xl mx-auto space-y-6 animate-in fade-in duration-150">
+            <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-stone-200">
+              <h2 className="text-xl font-bold font-heading text-[#071F25] mb-2">
+                Official Consular & Community Welfare Contacts
+              </h2>
+              <p className="text-xs text-stone-600 mb-6">
+                Direct helplines for Pakistani nationals in Muscat, Salalah, Sohar, Nizwa, and Sur.
+              </p>
+
+              <div className="space-y-4">
+                <div className="p-5 rounded-2xl bg-[#071F25] text-white flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                  <div>
+                    <span className="text-xs font-bold text-amber-400 uppercase tracking-wider">Embassy of Pakistan — Muscat</span>
+                    <h3 className="text-base font-bold mt-1">Community Welfare & Labour Section</h3>
+                    <p className="text-xs text-stone-300 mt-1">
+                      Diplomatic Area, Al Khuwair, P.O. Box 84, Postal Code 115, Muscat
+                    </p>
+                  </div>
+                  <a
+                    href="tel:+96824696991"
+                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#E4AE2F] text-[#071F25] font-bold text-xs hover:bg-amber-400"
+                  >
+                    <PhoneCall className="w-4 h-4" />
+                    <span>+968 2469 6991</span>
+                  </a>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+                  <div className="p-4 rounded-xl border border-stone-200 bg-stone-50">
+                    <h4 className="font-bold text-stone-900">Oman Ministry of Labour (Toll-Free)</h4>
+                    <p className="text-stone-500 mt-1">Direct grievance and inquiry hotline</p>
+                    <p className="font-mono font-bold text-emerald-800 text-sm mt-2">80077000</p>
+                  </div>
+
+                  <div className="p-4 rounded-xl border border-stone-200 bg-stone-50">
+                    <h4 className="font-bold text-stone-900">Royal Oman Police (ROP) Emergency</h4>
+                    <p className="text-stone-500 mt-1">24/7 Police, Ambulance, Civil Defense</p>
+                    <p className="font-mono font-bold text-rose-800 text-sm mt-2">9999</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* TAB 5: INCIDENT & GRIEVANCE REPORTING */}
+        {activeTab === 'incident' && (
+          <div className="max-w-2xl mx-auto bg-white rounded-3xl p-6 sm:p-10 shadow-sm border border-stone-200 animate-in fade-in duration-150">
+            <h2 className="text-xl font-bold font-heading text-[#071F25] mb-2">
+              Log an Incident or Request Urgent Welfare
+            </h2>
+            <p className="text-xs text-stone-600 mb-6 leading-relaxed">
+              Have an unresolved dispute regarding unpaid wages, workplace safety, medical emergency, or lost documents? Submit a report directly to the community welfare committee.
+            </p>
+
             {incidentSubmitted ? (
-              <div className="rounded-3xl border border-emerald-200 bg-white p-7 text-center shadow-sm">
-                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 text-emerald-900"><Check className="h-6 w-6" /></div>
-                <h2 className="mt-3 text-lg font-bold text-emerald-950">Report received</h2>
-                <p className="mt-2 text-sm text-stone-600">Your report is saved for the community welfare team. For official Oman labour complaints, use the Ministry of Labour link in Contacts.</p>
-                <button type="button" onClick={() => setIncidentSubmitted(false)} className="mt-5 rounded-lg bg-emerald-900 px-4 py-2 text-xs font-bold text-white">Submit another report</button>
+              <div className="p-6 rounded-2xl bg-emerald-50 border border-emerald-300 text-center space-y-3">
+                <Check className="w-10 h-10 text-emerald-600 mx-auto" />
+                <h3 className="text-base font-bold text-emerald-900">Incident Report Logged</h3>
+                <p className="text-xs text-emerald-800 max-w-sm mx-auto">
+                  Your case has been recorded. A community liaison or welfare officer will review the report and reach out to your registered phone number.
+                </p>
               </div>
             ) : (
-              <form onSubmit={handleSubmitIncident} className="space-y-4 rounded-3xl border border-stone-200 bg-white p-5 shadow-sm sm:p-7">
-                <FormField label="Subject / short summary" value={incidentSubject} onChange={setIncidentSubject} required placeholder="For example: found passport near Ruwi" />
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <label className="block text-xs font-bold text-[#071F25]">Incident type
-                    <select value={incidentCategory} onChange={(event) => setIncidentCategory(event.target.value)} className="mt-1.5 w-full rounded-xl border border-stone-300 bg-white px-3 py-3 text-sm font-normal">
-                      {incidentCategories.map((category) => <option key={category.value} value={category.value}>{category.label}</option>)}
-                    </select>
+              <form onSubmit={handleSubmitIncident} className="space-y-4">
+                <div>
+                  <label htmlFor="inc-subject" className="block text-xs font-bold text-[#071F25] mb-1">
+                    Subject / Summary
                   </label>
-                  <label className="block text-xs font-bold text-[#071F25]">Urgency
-                    <select value={incidentUrgency} onChange={(event) => setIncidentUrgency(event.target.value)} className="mt-1.5 w-full rounded-xl border border-stone-300 bg-white px-3 py-3 text-sm font-normal">
-                      <option value="normal">Standard</option><option value="urgent">Urgent</option><option value="critical">Critical — also call 9999 if life-threatening</option>
-                    </select>
-                  </label>
+                  <input
+                    id="inc-subject"
+                    type="text"
+                    required
+                    value={incidentSubject}
+                    onChange={(e) => setIncidentSubject(e.target.value)}
+                    placeholder="e.g. Unpaid wages for 2 months / Medical emergency assistance"
+                    className="w-full px-3 py-2.5 text-xs rounded-xl border border-stone-300 focus:ring-2 focus:ring-[#0D5A31]"
+                  />
                 </div>
-                <label className="block text-xs font-bold text-[#071F25]">What happened and what help is needed?
-                  <textarea required rows={5} value={incidentDetails} onChange={(event) => setIncidentDetails(event.target.value)} placeholder="Share the location, dates, people involved and safe contact details. Avoid posting passwords or bank PINs." className="mt-1.5 w-full rounded-xl border border-stone-300 px-3 py-3 text-sm font-normal leading-relaxed" />
-                </label>
-                {incidentError && <MessageBox tone="error">{incidentError}</MessageBox>}
-                <button type="submit" disabled={isSubmittingIncident} className="w-full rounded-xl bg-[#071F25] px-4 py-3 text-sm font-bold text-white disabled:opacity-50">{isSubmittingIncident ? 'Sending report…' : 'Send private report'}</button>
-                <p className="text-center text-[11px] text-stone-500">Reports are visible to authorized administrators, not to other members.</p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label htmlFor="inc-category" className="block text-xs font-bold text-[#071F25] mb-1">
+                      Issue Category
+                    </label>
+                    <select
+                      id="inc-category"
+                      value={incidentCategory}
+                      onChange={(e) => setIncidentCategory(e.target.value)}
+                      className="w-full px-3 py-2.5 text-xs rounded-xl border border-stone-300 bg-white"
+                    >
+                      <option value="wages">Unpaid / Delayed Wages</option>
+                      <option value="medical">Medical or Workplace Injury</option>
+                      <option value="passport">Passport / Residency Card Issue</option>
+                      <option value="housing">Accommodation & Living Conditions</option>
+                      <option value="repatriation">Repatriation / Flight Assistance</option>
+                      <option value="other">Other Welfare Request</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label htmlFor="inc-urgency" className="block text-xs font-bold text-[#071F25] mb-1">
+                      Urgency Level
+                    </label>
+                    <select
+                      id="inc-urgency"
+                      value={incidentUrgency}
+                      onChange={(e) => setIncidentUrgency(e.target.value)}
+                      className="w-full px-3 py-2.5 text-xs rounded-xl border border-stone-300 bg-white"
+                    >
+                      <option value="normal">Standard (Review within 48h)</option>
+                      <option value="urgent">Urgent (Within 24h)</option>
+                      <option value="critical">Critical / Emergency</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label htmlFor="inc-details" className="block text-xs font-bold text-[#071F25] mb-1">
+                    Detailed Description
+                  </label>
+                  <textarea
+                    id="inc-details"
+                    rows={4}
+                    required
+                    value={incidentDetails}
+                    onChange={(e) => setIncidentDetails(e.target.value)}
+                    placeholder="Provide employer name, location, dates, and what assistance is urgently needed..."
+                    className="w-full p-3 text-xs rounded-xl border border-stone-300 focus:ring-2 focus:ring-[#0D5A31]"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isSubmittingIncident}
+                  className="w-full py-3 rounded-xl font-bold text-xs bg-[#071F25] text-white hover:bg-[#0e3742] transition-colors disabled:opacity-50"
+                >
+                  {isSubmittingIncident ? 'Submitting Case...' : 'Submit Incident to Welfare Committee'}
+                </button>
               </form>
             )}
-          </section>
+          </div>
         )}
 
-        {activeTab === 'contacts' && (
-          <section className="animate-in fade-in duration-150">
-            <PanelHeading icon={PhoneCall} eyebrow="Keep these numbers handy" title="Emergency & community contacts" description="Tap a number to call. Official sources are linked on each contact card." />
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              {portalContacts.map((contact) => (
-                <article key={contact.name} className={`rounded-2xl border bg-white p-4 shadow-sm ${contact.priority === 'emergency' ? 'border-rose-200 ring-1 ring-rose-100' : 'border-stone-200'}`}>
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="font-bold text-[#071F25]">{contact.name}</p>
-                      <p className="mt-1 text-xs leading-relaxed text-stone-600">{contact.description}</p>
-                    </div>
-                    {contact.priority === 'emergency' && <span className="rounded-full bg-rose-100 px-2 py-1 text-[10px] font-bold uppercase text-rose-900">Emergency</span>}
-                  </div>
-                  <a href={contact.dialHref} className="mt-4 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#071F25] px-3 py-2 font-mono text-base font-extrabold text-white hover:bg-emerald-900">
-                    <PhoneCall className="h-4 w-4" /> {contact.number}
-                  </a>
-                  {contact.whatsappHref && <a href={contact.whatsappHref} target="_blank" rel="noreferrer" className="mt-2 inline-flex text-xs font-semibold text-emerald-900 underline">Open official WhatsApp contact</a>}
-                  <a href={contact.sourceUrl} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-1 text-[11px] font-semibold text-stone-500 underline">Source: {contact.sourceLabel} <ExternalLink className="h-3 w-3" /></a>
-                </article>
-              ))}
-            </div>
-
-            <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
-              <ResourceCard icon={FileText} title="File an official Oman labour complaint" description="Gov.om describes the Ministry of Labour complaint process and how unresolved cases may proceed to court." href="https://gov.om/en/w/record-labor-complaint-" source="Official Gov.om service" />
-              <ResourceCard icon={ShieldCheck} title="Worker rights and duties" description="Read the current official Oman Ministry of Labour guidance. This portal is not legal advice." href="https://www.mol.gov.om/pages/Employee-Rights-And-Duties" source="Oman Ministry of Labour" />
-            </div>
-            <p className="mt-4 rounded-xl bg-stone-100 p-3 text-xs leading-relaxed text-stone-600">The Supreme Judicial Council number above is for general enquiries; Gov.om does not list it as a dedicated labour-court hotline. Start a labour dispute through the Ministry of Labour complaint service.</p>
-          </section>
-        )}
-
-        {activeTab === 'news' && (
-          <section className="animate-in fade-in duration-150">
-            <PanelHeading icon={Newspaper} eyebrow="Live publisher links" title="News, labour rules & updates" description="Pakistan and Oman headlines, worker-rights guidance, and new-rule publications from official publishers." />
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              {officialNewsSources.map((source) => (
-                <a key={source.title} href={source.url} target="_blank" rel="noreferrer" className="group rounded-2xl border border-stone-200 bg-white p-5 shadow-sm transition hover:border-emerald-400 hover:shadow-md">
-                  <span className="inline-flex rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-emerald-900">{source.category}</span>
-                  <h2 className="mt-3 flex items-center justify-between gap-3 text-base font-bold text-[#071F25]">
-                    {source.title}<ExternalLink className="h-4 w-4 shrink-0 text-emerald-800 transition group-hover:translate-x-0.5" />
+        {/* TAB 6: VOTING & CIVIC INITIATIVES */}
+        {activeTab === 'voting' && (
+          <div className="max-w-3xl mx-auto space-y-6 animate-in fade-in duration-150">
+            <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-stone-200">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="p-2.5 rounded-xl bg-amber-100 text-amber-900">
+                  <Vote className="w-6 h-6" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold font-heading text-[#071F25]">
+                    Community Voting & Democratic Participation
                   </h2>
-                  <p className="mt-2 text-sm leading-relaxed text-stone-600">{source.description}</p>
-                  <p className="mt-4 text-xs font-semibold text-stone-500">{source.sourceLabel}</p>
-                </a>
-              ))}
+                  <p className="text-xs text-stone-500">
+                    Empowering all approved Pakistani workers with a direct voice in community representation.
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-6 p-5 rounded-2xl bg-amber-50/60 border border-amber-200 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-amber-900 uppercase tracking-wider">
+                    Upcoming Ballot #2026-B
+                  </span>
+                  <span className="text-[10px] bg-amber-200 text-amber-900 px-2 py-0.5 rounded-full font-bold">
+                    Opens Next Month
+                  </span>
+                </div>
+                <h3 className="font-bold text-sm text-[#071F25]">
+                  Annual Community Welfare Executive Council & Regional Representatives (Muscat, Sohar, Salalah)
+                </h3>
+                <p className="text-xs text-stone-600 leading-relaxed">
+                  Only active, verified members holding a registered membership card are eligible to cast ballots in community leadership polls.
+                </p>
+              </div>
+
+              <div className="mt-4 p-4 rounded-xl border border-stone-200 text-xs text-stone-500">
+                <span>Your voting credential is linked to Member ID: <strong>{member.memberId}</strong>. Check notifications for candidate profiles and voting dates.</span>
+              </div>
             </div>
-            <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-relaxed text-amber-950">
-              Headlines and rules open at the source website so members see the publisher’s current version. Confirm important legal or employment decisions with the Ministry of Labour or a qualified adviser.
-            </div>
-          </section>
+          </div>
         )}
+
       </main>
 
-      <nav aria-label="Mobile member navigation" className="fixed inset-x-0 bottom-0 z-40 border-t border-stone-200 bg-white/95 px-1 pt-1 shadow-[0_-6px_20px_rgba(7,31,37,0.08)] backdrop-blur md:hidden" style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 0.35rem)' }}>
-        <div className="mx-auto grid max-w-xl grid-cols-5">
-          {memberTabs.map(({ id, shortLabel, icon: Icon }) => (
-            <button key={id} type="button" onClick={() => setActiveTab(id)} aria-current={activeTab === id ? 'page' : undefined} className={`flex min-h-14 flex-col items-center justify-center gap-1 rounded-lg px-1 text-[10px] font-semibold transition-colors ${activeTab === id ? 'text-emerald-900' : 'text-stone-500 hover:text-[#071F25]'}`}>
-              <Icon className={`h-5 w-5 ${activeTab === id ? 'text-emerald-800' : ''}`} />
-              <span>{shortLabel}</span>
-            </button>
-          ))}
-        </div>
-      </nav>
-
-      <div className="mx-auto hidden max-w-6xl px-6 pb-5 pt-4 text-center text-[11px] text-stone-500 md:block">
-        Need help? Open <button type="button" onClick={() => setShowTermsModal(true)} className="font-semibold text-emerald-900 underline">community charter</button>.
-      </div>
+      {/* Official Community Charter Modal */}
       <TermsModal isOpen={showTermsModal} onClose={() => setShowTermsModal(false)} />
     </div>
   );
 };
-
-const Detail: React.FC<{ label: string; value: string; mono?: boolean }> = ({ label, value, mono = false }) => (
-  <div className="rounded-xl bg-stone-50 p-3">
-    <p className="text-[10px] font-bold uppercase tracking-wide text-stone-500">{label}</p>
-    <p className={`mt-1 break-words text-sm font-semibold text-[#071F25] ${mono ? 'font-mono' : ''}`}>{value}</p>
-  </div>
-);
-
-const FormField: React.FC<{
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  type?: string;
-  required?: boolean;
-  placeholder?: string;
-}> = ({ label, value, onChange, type = 'text', required = false, placeholder }) => (
-  <label className="block text-xs font-bold text-[#071F25]">{label}
-    <input type={type} required={required} value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} className="mt-1.5 w-full rounded-xl border border-stone-300 px-3 py-3 text-sm font-normal focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-100" />
-  </label>
-);
-
-const PanelHeading: React.FC<{ icon: LucideIcon; eyebrow: string; title: string; description: string }> = ({ icon: Icon, eyebrow, title, description }) => (
-  <div className="mb-4 rounded-3xl bg-[#071F25] p-5 text-white sm:p-6">
-    <div className="flex items-start gap-3">
-      <div className="rounded-xl bg-amber-300 p-2.5 text-[#071F25]"><Icon className="h-5 w-5" /></div>
-      <div>
-        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-amber-300">{eyebrow}</p>
-        <h1 className="mt-1 text-xl font-extrabold sm:text-2xl">{title}</h1>
-        <p className="mt-2 max-w-2xl text-sm leading-relaxed text-stone-300">{description}</p>
-      </div>
-    </div>
-  </div>
-);
-
-const ResourceCard: React.FC<{ icon: LucideIcon; title: string; description: string; href: string; source: string }> = ({ icon: Icon, title, description, href, source }) => (
-  <a href={href} target="_blank" rel="noreferrer" className="rounded-2xl border border-stone-200 bg-white p-4 shadow-sm hover:border-emerald-400">
-    <div className="flex items-start gap-3">
-      <Icon className="mt-0.5 h-5 w-5 shrink-0 text-emerald-800" />
-      <div>
-        <h3 className="font-bold text-[#071F25]">{title}</h3>
-        <p className="mt-1 text-xs leading-relaxed text-stone-600">{description}</p>
-        <p className="mt-3 inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-900">{source} <ExternalLink className="h-3 w-3" /></p>
-      </div>
-    </div>
-  </a>
-);
-
-const MessageBox: React.FC<{ tone: 'error' | 'info'; children: React.ReactNode }> = ({ tone, children }) => (
-  <div role="status" className={`rounded-xl border p-3 text-sm ${tone === 'error' ? 'border-rose-200 bg-rose-50 text-rose-900' : 'border-amber-200 bg-amber-50 text-amber-950'}`}>{children}</div>
-);
-
-const LoadingCard: React.FC<{ label: string }> = ({ label }) => (
-  <div className="rounded-2xl border border-stone-200 bg-white p-8 text-center text-sm text-stone-600 shadow-sm">{label}</div>
-);
-
-const EmptyCard: React.FC<{ title: string; body: string }> = ({ title, body }) => (
-  <div className="rounded-3xl border border-stone-200 bg-white p-8 text-center shadow-sm">
-    <Vote className="mx-auto h-8 w-8 text-stone-400" />
-    <h2 className="mt-3 font-bold text-[#071F25]">{title}</h2>
-    <p className="mt-2 text-sm text-stone-600">{body}</p>
-  </div>
-);

@@ -4,7 +4,9 @@ import { useAuth } from '../hooks/useAuth';
 import { PakistanLabourCommunityLogo } from '../lib/logo';
 import { FlagPair } from '../lib/flags';
 import { doc, updateDoc } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { db, storage } from '../lib/firebase';
+import { compressImage } from '../lib/imageCompressor';
 import { 
   Clock, 
   CheckCircle, 
@@ -14,11 +16,17 @@ import {
   LogOut, 
   AlertTriangle, 
   XCircle, 
-  Info,
-  Calendar,
-  User,
-  MapPin,
-  Send
+  Info, 
+  Calendar, 
+  User, 
+  MapPin, 
+  Send,
+  Receipt,
+  MessageCircle,
+  Copy,
+  Check,
+  UploadCloud,
+  ExternalLink
 } from 'lucide-react';
 
 export const PendingApprovalPage: React.FC = () => {
@@ -27,17 +35,78 @@ export const PendingApprovalPage: React.FC = () => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showSupportModal, setShowSupportModal] = useState(false);
   
+  // Payment receipt on pending page
+  const [copiedAccount, setCopiedAccount] = useState(false);
+  const [receiptUploading, setReceiptUploading] = useState(false);
+  const [receiptUploadSuccess, setReceiptUploadSuccess] = useState(false);
+
   // Info requested response state
   const [infoReply, setInfoReply] = useState('');
   const [isSubmittingReply, setIsSubmittingReply] = useState(false);
   const [replySuccess, setReplySuccess] = useState(false);
 
-  // Auto-redirect when approved via real-time onSnapshot listener in useAuth!
+  const handleCopyAccount = () => {
+    navigator.clipboard.writeText('96766876');
+    setCopiedAccount(true);
+    setTimeout(() => setCopiedAccount(false), 2000);
+  };
+
+  const handleSendWhatsAppReceipt = () => {
+    const phone = '96896766876';
+    const nameText = member?.fullName || user?.email || 'ممبر';
+    const cnicText = member?.idNumber || 'فارم میں درج ہے';
+    const mobileText = member?.mobile || 'فارم میں درج ہے';
+    const locationText = member?.currentLocation || member?.country || 'عمان';
+    const refText = member?.receiptReference ? `\nرسید نمبر: ${member.receiptReference}` : '';
+
+    const message = `السلام علیکم!
+میں نے پاکستان کمیونٹی عمان کی رجسٹریشن جمع کروائی ہے۔
+یہ میری ادائیگی / فنڈ تعاون کی رسید ہے۔
+
+نام: ${nameText}
+شناختی کارڈ / پاسپورٹ: ${cnicText}
+موبائل فون: ${mobileText}
+شہر / ولایت: ${locationText}
+تنظیم اکاؤنٹ نمبر: 96766876${refText}
+
+برائے مہربانی رسید کی تصدیق فرما کر میری ممبرشپ منظور فرمائیں اور کارڈ جاری کریں۔ شکریہ!`;
+
+    const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
+  const handleUploadReceiptNow = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || !e.target.files[0] || !user) return;
+    const file = e.target.files[0];
+    setReceiptUploading(true);
+    try {
+      const compressed = await compressImage(file, 500 * 1024, 1200);
+      const storageRef = ref(storage, `payment-receipts/${user.uid}/receipt_${Date.now()}.jpg`);
+      const uploadRes = await uploadBytes(storageRef, compressed, { contentType: 'image/jpeg' });
+      const downloadUrl = await getDownloadURL(uploadRes.ref);
+
+      const docRef = doc(db, 'members', user.uid);
+      await updateDoc(docRef, { paymentReceiptURL: downloadUrl });
+
+      setReceiptUploadSuccess(true);
+      setTimeout(() => setReceiptUploadSuccess(false), 5000);
+    } catch (err) {
+      console.warn('Receipt upload err:', err);
+    } finally {
+      setReceiptUploading(false);
+    }
+  };
+
+  // Auto-redirect when approved or if admin
   useEffect(() => {
+    if (member?.role === 'admin') {
+      navigate('/admin/registrations');
+      return;
+    }
     if (isApproved) {
       navigate('/member');
     }
-  }, [isApproved, navigate]);
+  }, [isApproved, member, navigate]);
 
   const handleManualRefresh = async () => {
     setIsRefreshing(true);
@@ -254,6 +323,97 @@ export const PendingApprovalPage: React.FC = () => {
                   <span className="text-stone-400 font-mono text-[11px]">ID:</span>
                   <span><strong>CNIC/Passport:</strong> {member?.idNumber || 'Logged'}</span>
                 </div>
+              </div>
+            </div>
+
+            {/* Payment Receipt / Proof of Contribution Card */}
+            <div className="bg-gradient-to-br from-emerald-50/90 via-white to-amber-50/60 rounded-2xl p-4 sm:p-5 border-2 border-emerald-300 shadow-xs space-y-3">
+              <div className="flex items-center justify-between pb-2 border-b border-emerald-200">
+                <div className="flex items-center gap-2">
+                  <Receipt className="w-4 h-4 text-[#0D5A31]" />
+                  <h3 className="text-xs sm:text-sm font-bold text-[#071F25]">
+                    Payment Receipt & Proof (ادائیگی کی رسید)
+                  </h3>
+                </div>
+                <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full border border-emerald-300">
+                  Fast Verification
+                </span>
+              </div>
+
+              {/* Account Number Box */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 bg-white rounded-xl border border-stone-200">
+                <div>
+                  <span className="text-[11px] text-stone-500 font-semibold block">تنظیم کا اکاؤنٹ نمبر (Bank Muscat / Mobile Transfer):</span>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <span className="font-mono text-base font-extrabold text-emerald-900 bg-emerald-50 px-2.5 py-0.5 rounded-lg border border-emerald-300">
+                      96766876
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleCopyAccount}
+                      className="px-2 py-1 text-[11px] font-bold bg-[#071F25] text-amber-300 hover:text-white rounded-lg transition-colors flex items-center gap-1"
+                    >
+                      {copiedAccount ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                      <span>{copiedAccount ? 'کاپی ہو گیا' : 'Copy'}</span>
+                    </button>
+                  </div>
+                </div>
+                <p className="text-[11px] text-stone-600 sm:text-right" dir="rtl">
+                  فیس یا فنڈ تعاون جمع کر کے رسید واٹس ایپ پر بھیجیں۔
+                </p>
+              </div>
+
+              {/* Direct WhatsApp Button */}
+              <button
+                type="button"
+                onClick={handleSendWhatsAppReceipt}
+                className="w-full py-3 px-4 rounded-xl font-bold text-xs sm:text-sm bg-[#25D366] hover:bg-[#1EBE5D] text-white shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <MessageCircle className="w-5 h-5 text-white shrink-0" />
+                <span>Send Payment Receipt via WhatsApp (+968 96766876)</span>
+              </button>
+
+              {/* Already uploaded state or upload more */}
+              <div className="pt-1 text-xs">
+                {member?.paymentReceiptURL ? (
+                  <div className="p-2.5 bg-emerald-100/80 rounded-xl border border-emerald-300 text-emerald-950 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle className="w-4 h-4 text-emerald-700" />
+                      <span className="font-semibold text-xs">Payment receipt is attached to your review file</span>
+                    </div>
+                    <a
+                      href={member.paymentReceiptURL}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[11px] font-bold text-emerald-900 underline flex items-center gap-1"
+                    >
+                      <span>View Slip</span>
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </div>
+                ) : (
+                  <div className="space-y-1.5 pt-1 border-t border-emerald-100">
+                    <span className="text-[11px] text-stone-500 font-semibold block">
+                      یا یہاں سے رسید کی تصویر اپلوڈ کریں:
+                    </span>
+                    <label className="cursor-pointer inline-flex items-center gap-2 px-3 py-1.5 bg-white border border-stone-300 hover:border-emerald-600 rounded-lg text-xs font-semibold text-stone-700">
+                      <UploadCloud className="w-3.5 h-3.5 text-emerald-700" />
+                      <span>{receiptUploading ? 'Uploading slip...' : 'Attach Receipt Image / PDF'}</span>
+                      <input
+                        type="file"
+                        accept="image/*,application/pdf"
+                        disabled={receiptUploading}
+                        onChange={handleUploadReceiptNow}
+                        className="hidden"
+                      />
+                    </label>
+                    {receiptUploadSuccess && (
+                      <span className="text-xs font-bold text-emerald-700 block mt-1">
+                        ✓ رسید کامیابی سے اپلوڈ ہو گئی!
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 

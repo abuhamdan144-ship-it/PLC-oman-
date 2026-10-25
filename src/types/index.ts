@@ -18,6 +18,8 @@ export interface MemberProfile {
   currentLocation: string; // City / Province / Wilayat
   idNumber: string; // CNIC or Passport
   photoURL?: string;
+  paymentReceiptURL?: string;
+  receiptReference?: string;
   status: MemberStatus;
   adminNote?: string;
   registeredAt: string;
@@ -77,4 +79,6 @@ export interface RegistrationFormData {
   emergencyContactRelation: string;
   acceptTerms: boolean;
   photoFile?: File | null;
+  paymentReceiptFile?: File | null;
+  receiptReference?: string;
 }
