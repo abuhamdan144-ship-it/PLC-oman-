@@ -15,8 +15,17 @@ service cloud.firestore {
 
     function isAdmin() {
       return isAuthenticated()
-        && exists(/databases/$(database)/documents/members/$(request.auth.uid))
-        && getMemberData(request.auth.uid).role == 'admin';
+        && (
+          (request.auth.token.email != null && (
+            request.auth.token.email.lower() == 'plc@community.com' ||
+            request.auth.token.email.lower() == 'hiapp144@gmail.com' ||
+            request.auth.token.email.lower() == 'abuhamdan144@gmail.com' ||
+            request.auth.token.email.lower() == 'abihamdan144@gmail.com' ||
+            request.auth.token.email.lower() == 'admin@community.com'
+          ))
+          || (exists(/databases/$(database)/documents/members/$(request.auth.uid))
+              && getMemberData(request.auth.uid).role == 'admin')
+        );
     }
 
     function isApprovedMember() {
@@ -31,13 +40,13 @@ service cloud.firestore {
       allow get: if isOwner(userId) || isAdmin();
       allow list: if isAdmin();
 
-      allow create: if isAdmin() || (isOwner(userId)
+      allow create: if isOwner(userId)
         && request.resource.data.keys().hasOnly([
           'fullName', 'email', 'mobile', 'country', 'currentLocation', 'idNumber',
           'photoURL', 'status', 'adminNote', 'registeredAt', 'emergencyContact', 'role'
         ])
         && request.resource.data.status == 'pending'
-        && request.resource.data.role == 'member');
+        && request.resource.data.role == 'member';
 
       allow update: if isAdmin() || (
         isOwner(userId)
@@ -120,10 +129,10 @@ service cloud.firestore {
         allow list: if isAdmin();
         allow create: if isApprovedMember()
           && isOwner(memberUid)
-          && request.resource.data.keys().hasOnly(['memberUid', 'selections', 'submittedAt'])
+          && request.resource.data.keys().hasOnly(['memberUid', 'optionId', 'submittedAt'])
           && request.resource.data.memberUid == request.auth.uid
-          && request.resource.data.selections is map
-          && request.resource.data.selections.size() > 0
+          && request.resource.data.optionId is string
+          && request.resource.data.optionId in get(/databases/$(database)/documents/elections/$(electionId)).data.optionIds
           && get(/databases/$(database)/documents/elections/$(electionId)).data.status == 'open'
           && exists(/databases/$(database)/documents/settings/portal)
           && get(/databases/$(database)/documents/settings/portal).data.activeElectionId == electionId

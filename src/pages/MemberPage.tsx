@@ -32,7 +32,7 @@ import {
 } from 'lucide-react';
 
 export const MemberPage: React.FC = () => {
-  const { member, user, notifications, markNotificationAsRead } = useAuth();
+  const { member, user, notifications, markNotificationAsRead, isAdmin } = useAuth();
 
   // Active section tab
   const [activeTab, setActiveTab] = useState<'card' | 'profile' | 'rules' | 'support' | 'incident' | 'voting'>('card');
@@ -155,7 +155,7 @@ export const MemberPage: React.FC = () => {
     <div className="min-h-screen bg-[#F9F7F2] pb-24">
       
       {/* Administrator Quick Notice Banner if Admin */}
-      {member.role === 'admin' && (
+      {(member.role === 'admin' || isAdmin) && (
         <div className="bg-[#E4AE2F] text-[#071F25] px-4 py-2.5 text-xs font-bold flex items-center justify-between shadow-md">
           <div className="max-w-7xl mx-auto w-full flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <span className="flex items-center gap-2">
