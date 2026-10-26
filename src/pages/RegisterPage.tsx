@@ -366,7 +366,24 @@ export const RegisterPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#F9F7F2] py-8 sm:py-12 px-4 sm:px-6 lg:px-8 flex flex-col justify-center">
+    <div className="auth-register-theme min-h-screen bg-gradient-to-br from-[#667eea] to-[#764ba2] py-8 sm:py-12 px-4 sm:px-6 lg:px-8 flex flex-col justify-center">
+      <style>{`
+        .auth-register-theme { font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+        .auth-register-theme h1 { color: #fff !important; }
+        .auth-register-theme .registration-card { border: 0; border-radius: 20px; box-shadow: 0 25px 50px rgba(0,0,0,.20); }
+        .auth-register-theme .registration-card input:not([type="checkbox"]):not([type="file"]),
+        .auth-register-theme .registration-card select,
+        .auth-register-theme .registration-card textarea { border-color: #ddd6fe; }
+        .auth-register-theme .registration-card input:not([type="checkbox"]):not([type="file"]):focus,
+        .auth-register-theme .registration-card select:focus,
+        .auth-register-theme .registration-card textarea:focus { border-color: #667eea; box-shadow: 0 0 0 2px rgba(102,126,234,.22); }
+        .auth-register-theme .registration-card form > div:not([role="alert"]) input:not([type="checkbox"]):not([type="file"]),
+        .auth-register-theme .registration-card form > div:not([role="alert"]) select { border-radius: 55px; }
+        .auth-register-theme .registration-card form > div:not([role="alert"]) textarea { border-radius: 20px; }
+        .auth-register-theme .registration-card button[type="submit"] { background: linear-gradient(135deg, #667eea, #764ba2); border-radius: 49px; }
+        .auth-register-theme .registration-card button[type="submit"]:hover { background: linear-gradient(135deg, #5568d3, #653d8d); transform: translateY(-2px); }
+        .auth-register-theme .registration-card a { color: #667eea; }
+      `}</style>
       <div className="max-w-2xl mx-auto w-full">
         
         {/* Header Branding Area (Authorized Logo usage) */}
@@ -389,7 +406,7 @@ export const RegisterPage: React.FC = () => {
         </div>
 
         {/* Registration Card Form */}
-        <div className="bg-white rounded-2xl shadow-xl border border-stone-200/80 p-6 sm:p-10">
+        <div className="registration-card bg-white rounded-2xl shadow-xl border border-stone-200/80 p-6 sm:p-10">
           
           {submitError && (
             <div 
