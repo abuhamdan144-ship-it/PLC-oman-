@@ -15,8 +15,11 @@ service cloud.firestore {
 
     function isAdmin() {
       return isAuthenticated()
-        && exists(/databases/$(database)/documents/members/$(request.auth.uid))
-        && getMemberData(request.auth.uid).role == 'admin';
+        && (
+          (request.auth.token.email != null && request.auth.token.email.lower() == 'plc@community.com')
+          || (exists(/databases/$(database)/documents/members/$(request.auth.uid))
+              && getMemberData(request.auth.uid).role == 'admin')
+        );
     }
 
     function isApprovedMember() {

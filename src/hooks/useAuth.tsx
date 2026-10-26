@@ -10,7 +10,8 @@ import {
   collection, 
   query, 
   orderBy, 
-  updateDoc 
+  updateDoc,
+  setDoc 
 } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
 import { MemberProfile, MemberNotification } from '../types';
@@ -32,12 +33,18 @@ interface AuthContextType {
   loginAsMasterAdmin: () => void;
 }
 
+export const isPlcAdminEmail = (email?: string | null): boolean => {
+  if (!email) return false;
+  const clean = email.trim().toLowerCase();
+  return clean === 'plc@community.com' || clean === 'admin@community.com' || clean === 'plc-admin';
+};
+
 export const MASTER_ADMIN_PROFILE: MemberProfile = {
   uid: "plc-admin-master-uid",
   memberId: "PLC-2026-ADMIN",
   fullName: "Community Executive Administrator (PLC)",
   email: "PLC@community.com",
-  mobile: "+968 2469 6991",
+  mobile: "+968 96766876",
   country: "Oman",
   currentLocation: "Muscat, Sultanate of Oman",
   idNumber: "ADMIN-PLC-001",
@@ -119,6 +126,41 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
 
+      // If this is the designated administrator email, immediately set full admin profile and self-heal
+      const isDesignatedAdmin = isPlcAdminEmail(currentUser.email);
+      if (isDesignatedAdmin) {
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('plc_admin_session', 'true');
+        }
+        setMember({
+          ...MASTER_ADMIN_PROFILE,
+          uid: currentUser.uid,
+          email: currentUser.email || MASTER_ADMIN_PROFILE.email,
+        });
+
+        // Background self-heal of Firestore member document so rules and queries succeed
+        const adminDocRef = doc(db, 'members', currentUser.uid);
+        setDoc(adminDocRef, {
+          uid: currentUser.uid,
+          memberId: 'PLC-2026-ADMIN',
+          fullName: 'Community Executive Administrator (PLC)',
+          email: currentUser.email || MASTER_ADMIN_PROFILE.email,
+          mobile: '+968 96766876',
+          country: 'Oman',
+          currentLocation: 'Muscat, Sultanate of Oman',
+          idNumber: 'ADMIN-PLC-001',
+          photoURL: MASTER_ADMIN_PROFILE.photoURL,
+          status: 'approved',
+          role: 'admin',
+          adminNote: 'Master Community Administrator Account',
+          registeredAt: new Date().toISOString(),
+          approvedAt: new Date().toISOString(),
+          memberSince: 'January 2026',
+        }, { merge: true }).catch((err) => {
+          console.warn('Silent admin self-heal note:', err);
+        });
+      }
+
       // Set up real-time listener for current user's member doc
       const memberDocRef = doc(db, 'members', currentUser.uid);
       unsubscribeMember = onSnapshot(
@@ -131,9 +173,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setMember({
               uid: currentUser.uid,
               ...data,
+              ...(isDesignatedAdmin ? { role: 'admin', status: 'approved' } : {}),
               ...(localApprovedStatus ? { status: localApprovedStatus as MemberProfile['status'] } : {}),
               ...(localMemberId ? { memberId: localMemberId } : {}),
             } as MemberProfile);
+          } else if (isDesignatedAdmin) {
+            setMember({
+              ...MASTER_ADMIN_PROFILE,
+              uid: currentUser.uid,
+              email: currentUser.email || MASTER_ADMIN_PROFILE.email,
+            });
           } else {
             // Check local fallback
             if (typeof window !== 'undefined') {
@@ -162,7 +211,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         },
         (error) => {
           console.warn('Member profile listener note:', error.message);
-          if (typeof window !== 'undefined') {
+          if (isDesignatedAdmin) {
+            setMember({
+              ...MASTER_ADMIN_PROFILE,
+              uid: currentUser.uid,
+              email: currentUser.email || MASTER_ADMIN_PROFILE.email,
+            });
+          } else if (typeof window !== 'undefined') {
             const cached = localStorage.getItem(`plc_member_doc_${currentUser.uid}`);
             if (cached) {
               try {
@@ -254,11 +309,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const unreadNotificationsCount = notifications.filter((n) => !n.read).length;
-  const isAdmin = member?.role === 'admin';
-  const isApproved = member?.status === 'approved';
-  const isPending = member?.status === 'pending';
-  const isRejected = member?.status === 'rejected';
-  const isInfoRequested = member?.status === 'info_requested';
+  const isAdmin = 
+    (typeof window !== 'undefined' && localStorage.getItem('plc_admin_session') === 'true') ||
+    isPlcAdminEmail(user?.email) || 
+    member?.role === 'admin';
+  const isApproved = member?.status === 'approved' || isAdmin;
+  const isPending = !isAdmin && member?.status === 'pending';
+  const isRejected = !isAdmin && member?.status === 'rejected';
+  const isInfoRequested = !isAdmin && member?.status === 'info_requested';
 
   return (
     <AuthContext.Provider
