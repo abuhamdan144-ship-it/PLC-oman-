@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { sendPasswordResetEmail, signInWithEmailAndPassword } from 'firebase/auth';
+import { GoogleAuthProvider, sendPasswordResetEmail, signInWithEmailAndPassword, signInWithPopup } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
-import { AlertCircle, ArrowRight, CheckCircle2, KeyRound, Lock, Mail, ShieldCheck, User, X } from 'lucide-react';
+import { AlertCircle, ArrowRight, CheckCircle2, Chrome, KeyRound, Lock, Mail, ShieldCheck, User, X } from 'lucide-react';
 import { auth, db } from '../lib/firebase';
 import { PakistanLabourCommunityLogo } from '../lib/logo';
 import { FlagPair } from '../lib/flags';
@@ -74,6 +74,32 @@ export const LoginPage: React.FC = () => {
     }
   };
 
+  const handleGoogleAdminLogin = async () => {
+    setErrorMessage(null);
+    setIsLoading(true);
+    try {
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: 'select_account' });
+      const credential = await signInWithPopup(auth, provider);
+      const profile = await getDoc(doc(db, 'members', credential.user.uid));
+      const role = profile.exists() ? profile.data().role : undefined;
+      if (role !== 'admin') {
+        await auth.signOut();
+        setErrorMessage('Access denied. This Google account is not assigned the administrator role.');
+        return;
+      }
+      navigate('/admin/registrations', { replace: true });
+    } catch (error: unknown) {
+      const code = typeof error === 'object' && error !== null && 'code' in error ? (error as { code: string }).code : '';
+      if (code === 'auth/popup-closed-by-user') setErrorMessage('Google sign-in was cancelled.');
+      else if (code === 'auth/popup-blocked') setErrorMessage('Your browser blocked the Google sign-in window. Allow pop-ups and try again.');
+      else if (code === 'auth/operation-not-allowed') setErrorMessage('Google sign-in is not enabled in Firebase Authentication. Enable the Google provider in the Firebase Console.');
+      else setErrorMessage('Unable to sign in with Google right now. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handlePasswordReset = async (event: React.FormEvent) => {
     event.preventDefault();
     setResetError(null);
@@ -114,6 +140,17 @@ export const LoginPage: React.FC = () => {
           <div className="p-6 sm:p-8">
             {errorMessage && <div role="alert" className="mb-5 p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs sm:text-sm flex items-start gap-2.5"><AlertCircle className="w-5 h-5 text-rose-600 shrink-0" /><div><p className="font-semibold">Sign In Failed</p><p className="mt-0.5">{errorMessage}</p></div></div>}
 
+            {isAdminLogin ? (
+              <div className="space-y-4">
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-xs leading-relaxed text-amber-950">
+                  <div className="flex items-center gap-2 font-bold"><ShieldCheck className="h-4 w-4 text-amber-700" /> Administrator Google access only</div>
+                  <p className="mt-1.5">Use the authorized Google account assigned the <code className="font-mono font-semibold">role: admin</code> permission. Email/password admin login is disabled.</p>
+                </div>
+                <button type="button" onClick={handleGoogleAdminLogin} disabled={isLoading} className="flex w-full items-center justify-center gap-3 rounded-xl bg-[#071F25] px-4 py-3.5 text-sm font-bold text-white shadow-md transition-all hover:bg-[#0e3742] disabled:cursor-not-allowed disabled:opacity-60">
+                  {isLoading ? <><div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" /><span>Verifying Google access...</span></> : <><Chrome className="h-5 w-5 text-amber-300" /><span>Continue with Google</span><ArrowRight className="h-4 w-4 text-amber-400" /></>}
+                </button>
+              </div>
+            ) : (
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label htmlFor="login-email" className="block text-xs font-bold text-[#071F25] mb-1">{isAdminLogin ? 'Admin Email' : 'Registered Email Address'}</label>
@@ -125,6 +162,7 @@ export const LoginPage: React.FC = () => {
               </div>
               <button type="submit" disabled={isLoading} style={{ backgroundColor: accent }} className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-bold text-sm text-white shadow-md transition-all disabled:opacity-60">{isLoading ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /><span>Verifying access...</span></> : <><span>{isAdminLogin ? 'Sign In to Admin Dashboard' : 'Sign In to Member Portal'}</span><ArrowRight className="w-4 h-4 text-amber-400" /></>}</button>
             </form>
+            )}
 
             <div className="mt-6 pt-5 border-t border-stone-200 text-center text-xs text-stone-600">
               {isAdminLogin ? <><p>Admin access is granted only to accounts with <code className="font-mono font-semibold">role: admin</code>.</p><Link to="/login" className="inline-block mt-3 font-bold text-[#0D5A31] underline">Go to Member Sign In</Link></> : <p>Not registered yet? <Link to="/register" className="font-bold text-[#0D5A31] underline ml-1">Join Pakistan Labour Community</Link></p>}
