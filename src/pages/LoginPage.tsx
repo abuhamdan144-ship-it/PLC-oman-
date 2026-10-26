@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { GoogleAuthProvider, sendPasswordResetEmail, signInWithEmailAndPassword, signInWithPopup } from 'firebase/auth';
+import { GoogleAuthProvider, getRedirectResult, sendPasswordResetEmail, signInWithEmailAndPassword, signInWithRedirect } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { AlertCircle, ArrowRight, CheckCircle2, Chrome, KeyRound, Lock, Mail, ShieldCheck, User, X } from 'lucide-react';
 import { auth, db } from '../lib/firebase';
@@ -29,6 +29,34 @@ export const LoginPage: React.FC = () => {
     const error = new URLSearchParams(location.search).get('error');
     setErrorMessage(error === 'unauthorized' ? 'This account is not authorized for the administrator portal.' : null);
   }, [location.search]);
+
+  useEffect(() => {
+    if (!isAdminLogin) return;
+    let active = true;
+    setIsLoading(true);
+    getRedirectResult(auth)
+      .then(async (result) => {
+        if (!active || !result) return;
+        const profile = await getDoc(doc(db, 'members', result.user.uid));
+        const role = profile.exists() ? profile.data().role : undefined;
+        if (role !== 'admin') {
+          await auth.signOut();
+          setErrorMessage('Access denied. This Google account is not assigned the administrator role.');
+          return;
+        }
+        navigate('/admin/registrations', { replace: true });
+      })
+      .catch((error: unknown) => {
+        if (!active) return;
+        const code = typeof error === 'object' && error !== null && 'code' in error ? (error as { code: string }).code : '';
+        if (code === 'auth/unauthorized-domain') setErrorMessage('This website domain is not authorized in Firebase Authentication settings.');
+        else if (code === 'auth/operation-not-allowed') setErrorMessage('Google sign-in is not enabled in Firebase Authentication. Enable the Google provider in Firebase Console.');
+        else if (code === 'auth/account-exists-with-different-credential') setErrorMessage('This email already uses another sign-in method. Contact the administrator.');
+        else setErrorMessage(`Google sign-in failed (${code || 'unknown error'}). Check Firebase Google provider and Authorized Domains settings.`);
+      })
+      .finally(() => { if (active) setIsLoading(false); });
+    return () => { active = false; };
+  }, [isAdminLogin, navigate]);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -80,21 +108,12 @@ export const LoginPage: React.FC = () => {
     try {
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({ prompt: 'select_account' });
-      const credential = await signInWithPopup(auth, provider);
-      const profile = await getDoc(doc(db, 'members', credential.user.uid));
-      const role = profile.exists() ? profile.data().role : undefined;
-      if (role !== 'admin') {
-        await auth.signOut();
-        setErrorMessage('Access denied. This Google account is not assigned the administrator role.');
-        return;
-      }
-      navigate('/admin/registrations', { replace: true });
+      await signInWithRedirect(auth, provider);
     } catch (error: unknown) {
       const code = typeof error === 'object' && error !== null && 'code' in error ? (error as { code: string }).code : '';
-      if (code === 'auth/popup-closed-by-user') setErrorMessage('Google sign-in was cancelled.');
-      else if (code === 'auth/popup-blocked') setErrorMessage('Your browser blocked the Google sign-in window. Allow pop-ups and try again.');
+      if (code === 'auth/unauthorized-domain') setErrorMessage('This website domain is not authorized in Firebase Authentication settings.');
       else if (code === 'auth/operation-not-allowed') setErrorMessage('Google sign-in is not enabled in Firebase Authentication. Enable the Google provider in the Firebase Console.');
-      else setErrorMessage('Unable to sign in with Google right now. Please try again.');
+      else setErrorMessage(`Google sign-in failed (${code || 'unknown error'}). Check Firebase Google provider and Authorized Domains settings.`);
     } finally {
       setIsLoading(false);
     }
