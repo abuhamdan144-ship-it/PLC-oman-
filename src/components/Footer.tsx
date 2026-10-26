@@ -107,7 +107,7 @@ export const Footer: React.FC = () => {
             </button>
             <span>•</span>
             <Link 
-              to="/admin/registrations" 
+              to="/admin/login" 
               className="text-amber-400/90 hover:text-amber-300 font-semibold underline underline-offset-4 transition-colors"
             >
               Admin Registry Desk

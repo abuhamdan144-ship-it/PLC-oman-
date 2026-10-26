@@ -215,7 +215,7 @@ export const Navbar: React.FC = () => {
                         )}
 
                         <Link
-                          to="/admin/registrations"
+                          to={isAdmin ? '/admin/registrations' : '/admin/login'}
                           onClick={() => setShowUserMenu(false)}
                           className="flex items-center gap-2.5 px-4 py-2 text-xs text-amber-800 hover:bg-amber-50 font-semibold"
                         >
@@ -237,7 +237,7 @@ export const Navbar: React.FC = () => {
               ) : (
                 <div className="flex items-center gap-2.5">
                   <Link
-                    to="/admin/registrations"
+                    to="/admin/login"
                     className="text-xs font-semibold text-amber-300 hover:text-white px-2.5 py-1.5 rounded-lg border border-amber-400/30 hover:bg-white/10 transition-colors"
                   >
                     Admin Portal
@@ -325,7 +325,7 @@ export const Navbar: React.FC = () => {
                 )}
 
                   <Link
-                    to="/admin/registrations"
+                    to={isAdmin ? '/admin/registrations' : '/admin/login'}
                     onClick={() => setShowMobileMenu(false)}
                     className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-amber-300 hover:bg-white/10 font-bold"
                   >
@@ -344,7 +344,7 @@ export const Navbar: React.FC = () => {
             ) : (
               <div className="flex flex-col gap-2 pt-2">
                 <Link
-                  to="/admin/registrations"
+                  to="/admin/login"
                   onClick={() => setShowMobileMenu(false)}
                   className="text-center py-2.5 px-4 rounded-lg text-sm font-bold border border-amber-400/40 text-amber-300 hover:bg-white/5"
                 >

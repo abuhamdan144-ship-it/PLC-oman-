@@ -47,11 +47,12 @@ const AppContent: React.FC = () => {
 
           <Route path="/register" element={<PublicOnlyRoute><RegisterPage /></PublicOnlyRoute>} />
           <Route path="/login" element={<PublicOnlyRoute><LoginPage /></PublicOnlyRoute>} />
+          <Route path="/admin/login" element={<LoginPage />} />
 
           <Route path="/pending-approval" element={<PendingApprovalRoute><PendingApprovalPage /></PendingApprovalRoute>} />
           <Route path="/member" element={<ProtectedMemberRoute><MemberPage /></ProtectedMemberRoute>} />
 
-          <Route path="/admin" element={<Navigate to="/admin/registrations" replace />} />
+          <Route path="/admin" element={<Navigate to="/admin/login" replace />} />
           <Route path="/admin/registrations" element={<ProtectedAdminRoute><AdminRegistrationsPage /></ProtectedAdminRoute>} />
           <Route path="/admin/portal" element={<ProtectedAdminRoute><AdminPortalPage /></ProtectedAdminRoute>} />
 

@@ -72,3 +72,12 @@ firebase deploy --only storage
 npm run build
 ```
 This generates the optimized production build in `/dist`.
+
+## 🔐 Separate administrator access
+
+The member sign-in and administrator sign-in are separate routes:
+
+- Members: `/login`
+- Administrators: `/admin/login`
+
+Administrator access is granted only after Firebase Authentication succeeds and the signed-in user's Firestore document in `members/{uid}` has `role: "admin"`. The application no longer trusts a local-storage flag, an email address alone, hardcoded credentials, or automatic admin account creation. Firestore rules enforce the same role check for protected administrator data. Promote the first administrator manually in Firebase Console as described above, then deploy `firestore.rules`.
