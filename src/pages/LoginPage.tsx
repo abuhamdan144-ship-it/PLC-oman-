@@ -49,7 +49,7 @@ export const LoginPage: React.FC = () => {
       .catch((error: unknown) => {
         if (!active) return;
         const code = typeof error === 'object' && error !== null && 'code' in error ? (error as { code: string }).code : '';
-        if (code === 'auth/unauthorized-domain') setErrorMessage('This website domain is not authorized in Firebase Authentication settings.');
+        if (code === 'auth/unauthorized-domain') setErrorMessage(`This website domain is not authorized in Firebase Authentication settings. Add this exact domain without https:// or a path: ${window.location.hostname}`);
         else if (code === 'auth/operation-not-allowed') setErrorMessage('Google sign-in is not enabled in Firebase Authentication. Enable the Google provider in Firebase Console.');
         else if (code === 'auth/account-exists-with-different-credential') setErrorMessage('This email already uses another sign-in method. Contact the administrator.');
         else setErrorMessage(`Google sign-in failed (${code || 'unknown error'}). Check Firebase Google provider and Authorized Domains settings.`);
@@ -111,7 +111,7 @@ export const LoginPage: React.FC = () => {
       await signInWithRedirect(auth, provider);
     } catch (error: unknown) {
       const code = typeof error === 'object' && error !== null && 'code' in error ? (error as { code: string }).code : '';
-      if (code === 'auth/unauthorized-domain') setErrorMessage('This website domain is not authorized in Firebase Authentication settings.');
+      if (code === 'auth/unauthorized-domain') setErrorMessage(`This website domain is not authorized in Firebase Authentication settings. Add this exact domain without https:// or a path: ${window.location.hostname}`);
       else if (code === 'auth/operation-not-allowed') setErrorMessage('Google sign-in is not enabled in Firebase Authentication. Enable the Google provider in the Firebase Console.');
       else setErrorMessage(`Google sign-in failed (${code || 'unknown error'}). Check Firebase Google provider and Authorized Domains settings.`);
     } finally {
