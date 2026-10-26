@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { MembershipCard } from '../components/MembershipCard';
+import { VotingPanel } from '../components/VotingPanel';
 import { PakistanLabourCommunityLogo } from '../lib/logo';
 import { FlagPair } from '../lib/flags';
 import { compressImage } from '../lib/imageCompressor';
@@ -907,26 +908,7 @@ export const MemberPage: React.FC = () => {
                 </div>
               </div>
 
-              <div className="mt-6 p-5 rounded-2xl bg-amber-50/60 border border-amber-200 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-amber-900 uppercase tracking-wider">
-                    Upcoming Ballot #2026-B
-                  </span>
-                  <span className="text-[10px] bg-amber-200 text-amber-900 px-2 py-0.5 rounded-full font-bold">
-                    Opens Next Month
-                  </span>
-                </div>
-                <h3 className="font-bold text-sm text-[#071F25]">
-                  Annual Community Welfare Executive Council & Regional Representatives (Muscat, Sohar, Salalah)
-                </h3>
-                <p className="text-xs text-stone-600 leading-relaxed">
-                  Only active, verified members holding a registered membership card are eligible to cast ballots in community leadership polls.
-                </p>
-              </div>
-
-              <div className="mt-4 p-4 rounded-xl border border-stone-200 text-xs text-stone-500">
-                <span>Your voting credential is linked to Member ID: <strong>{member.memberId}</strong>. Check notifications for candidate profiles and voting dates.</span>
-              </div>
+              <div className="mt-6"><VotingPanel member={member} /></div>
             </div>
           </div>
         )}

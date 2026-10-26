@@ -22,7 +22,7 @@ import {
   Vote,
   type LucideIcon,
 } from 'lucide-react';
-import type { CommunityElection, ElectionOption, MemberProfile } from '../types';
+import type { CommunityElection, ElectionNominee, ElectionPosition, MemberProfile } from '../types';
 
 type AdminSection = 'ballot' | 'reports' | 'verification';
 type IncidentStatus = 'new' | 'reviewing' | 'resolved';
@@ -68,7 +68,7 @@ export const AdminPortalPage: React.FC = () => {
   const [loadingIncidents, setLoadingIncidents] = useState(true);
   const [electionTitle, setElectionTitle] = useState('Community Cabinet Election');
   const [electionDescription, setElectionDescription] = useState('Select one cabinet to represent the community.');
-  const [electionOptions, setElectionOptions] = useState('Cabinet A\nCabinet B');
+  const [electionPositions, setElectionPositions] = useState('President: Nominee One | PLC-2026-00001 | Community leadership\nVice President: Nominee Two | PLC-2026-00002 | Welfare coordination\nGeneral Secretary: Nominee Three | PLC-2026-00003 | Administration\nTreasurer: Nominee Four | PLC-2026-00004 | Finance and records\nWelfare Secretary: Nominee Five | PLC-2026-00005 | Member welfare\nMedia & Communication Secretary: Nominee Six | PLC-2026-00006 | Community communications\nRegional Representative: Nominee Seven | PLC-2026-00007 | Regional coordination');
   const [closesAt, setClosesAt] = useState(() => toDateInput(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)));
   const [isCreatingElection, setIsCreatingElection] = useState(false);
   const [isClosingElection, setIsClosingElection] = useState(false);
@@ -106,8 +106,14 @@ export const AdminPortalPage: React.FC = () => {
       (snapshot) => {
         const tally: Record<string, number> = {};
         snapshot.forEach((vote) => {
-          const optionId = vote.data().optionId as string;
-          tally[optionId] = (tally[optionId] || 0) + 1;
+          const data = vote.data();
+          const selections = data.selections as Record<string, string> | undefined;
+          if (selections) {
+            Object.entries(selections).forEach(([positionId, nomineeId]) => {
+              const key = `${positionId}:${nomineeId}`;
+              tally[key] = (tally[key] || 0) + 1;
+            });
+          }
         });
         setVoteTally(tally);
       },
@@ -153,10 +159,18 @@ export const AdminPortalPage: React.FC = () => {
   const handleCreateElection = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!user) return;
-    const labels = electionOptions.split('\n').map((option) => option.trim()).filter(Boolean);
+    const positions: ElectionPosition[] = electionPositions.split('\n').map((line, positionIndex) => {
+      const [titlePart, nomineesPart = ''] = line.split(':');
+      const title = titlePart.trim();
+      const nominees: ElectionNominee[] = nomineesPart.split(',').map((raw, nomineeIndex) => {
+        const [namePart, memberIdPart, bioPart] = raw.split('|').map((value) => value?.trim() || '');
+        return { id: `nominee-${positionIndex + 1}-${nomineeIndex + 1}`, name: namePart, memberId: memberIdPart || undefined, bio: bioPart || undefined };
+      }).filter((nominee) => nominee.name);
+      return { id: `position-${positionIndex + 1}`, title, nominees };
+    }).filter((position) => position.title && position.nominees.length > 0);
     const closeDate = new Date(closesAt);
-    if (labels.length < 2) {
-      showNotice('Add at least two cabinet options, one per line.', true);
+    if (!positions.length || positions.some((position) => position.nominees.length < 2)) {
+      showNotice('Add every cabinet position with at least two nominees. Use: Position: Name | Member ID | Bio', true);
       return;
     }
     if (Number.isNaN(closeDate.getTime()) || closeDate.getTime() <= Date.now()) {
@@ -167,7 +181,6 @@ export const AdminPortalPage: React.FC = () => {
     setIsCreatingElection(true);
     try {
       const electionRef = doc(collection(db, 'elections'));
-      const options: ElectionOption[] = labels.map((label, index) => ({ id: `option-${index + 1}`, label }));
       const batch = writeBatch(db);
       if (activeElectionId) {
         batch.update(doc(db, 'elections', activeElectionId), { status: 'closed', closedAt: serverTimestamp() });
@@ -175,8 +188,8 @@ export const AdminPortalPage: React.FC = () => {
       batch.set(electionRef, {
         title: electionTitle.trim(),
         description: electionDescription.trim(),
-        options,
-        optionIds: options.map((option) => option.id),
+        positions,
+        positionIds: positions.map((position) => position.id),
         status: 'open',
         closesAt: Timestamp.fromDate(closeDate),
         createdAt: serverTimestamp(),
@@ -301,8 +314,9 @@ export const AdminPortalPage: React.FC = () => {
                 <label className="block text-xs font-bold text-[#071F25]">Instructions / description
                   <textarea value={electionDescription} onChange={(event) => setElectionDescription(event.target.value)} rows={3} className="mt-1.5 w-full rounded-xl border border-stone-300 px-3 py-3 text-sm font-normal" />
                 </label>
-                <label className="block text-xs font-bold text-[#071F25]">Cabinet options <span className="font-normal text-stone-500">(one per line, minimum two)</span>
-                  <textarea required value={electionOptions} onChange={(event) => setElectionOptions(event.target.value)} rows={5} placeholder={'Cabinet A\nCabinet B'} className="mt-1.5 w-full rounded-xl border border-stone-300 px-3 py-3 text-sm font-normal" />
+                <label className="block text-xs font-bold text-[#071F25]">Cabinet positions and nominees <span className="font-normal text-stone-500">(one position per line; separate nominees with commas)</span>
+                  <textarea required value={electionPositions} onChange={(event) => setElectionPositions(event.target.value)} rows={8} placeholder={'President: Ali Khan | PLC-2026-00001 | Welfare experience, Hamza Ahmed | PLC-2026-00002 | Muscat representative'} className="mt-1.5 w-full rounded-xl border border-stone-300 px-3 py-3 text-sm font-normal" />
+                  <span className="mt-1 block text-[10px] font-normal text-stone-500">Format: <strong>Position: Nominee | Member ID | Short bio, Nominee 2 | Member ID | Short bio</strong></span>
                 </label>
                 <label className="block text-xs font-bold text-[#071F25]">Voting closes at
                   <input type="datetime-local" required value={closesAt} onChange={(event) => setClosesAt(event.target.value)} className="mt-1.5 w-full rounded-xl border border-stone-300 px-3 py-3 text-sm font-normal" />
@@ -322,7 +336,7 @@ export const AdminPortalPage: React.FC = () => {
                       <div className="flex items-start justify-between gap-2"><h3 className="font-bold text-[#071F25]">{activeElection.title}</h3><span className={`rounded-full px-2 py-1 text-[10px] font-bold uppercase ${activeElection.status === 'open' ? 'bg-emerald-100 text-emerald-900' : 'bg-stone-200 text-stone-700'}`}>{activeElection.status}</span></div>
                       <p className="mt-1 text-xs text-stone-600">Closes {activeElection.closesAt?.toDate?.().toLocaleString() || 'date unavailable'}</p>
                       <div className="mt-4 space-y-2">
-                        {(activeElection.options || []).map((option) => <div key={option.id} className="flex items-center justify-between gap-3 rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm"><span>{option.label}</span><span className="font-mono font-bold text-emerald-900">{voteTally[option.id] || 0} votes</span></div>)}
+                        {(activeElection.positions || []).map((position) => <div key={position.id} className="space-y-1"><p className="text-xs font-bold uppercase tracking-wide text-emerald-800">{position.title}</p>{position.nominees.map((nominee) => <div key={nominee.id} className="flex items-center justify-between gap-3 rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm"><span>{nominee.name}</span><span className="font-mono font-bold text-emerald-900">{voteTally[`${position.id}:${nominee.id}`] || 0} votes</span></div>)}</div>)}
                       </div>
                       <p className="mt-3 text-xs font-semibold text-stone-500">Total ballots: {Object.values(voteTally).reduce((sum, count) => sum + count, 0)}</p>
                     </div>

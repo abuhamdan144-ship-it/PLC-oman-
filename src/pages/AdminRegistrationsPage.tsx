@@ -3,6 +3,7 @@ import {
   collection, 
   onSnapshot, 
   doc, 
+  deleteDoc,
   runTransaction, 
   setDoc,
   updateDoc, 
@@ -12,6 +13,7 @@ import { db } from '../lib/firebase';
 import { useAuth } from '../hooks/useAuth';
 import { MemberProfile, MemberStatus, MemberCountry } from '../types';
 import { SAMPLE_MEMBER_PENDING, SAMPLE_MEMBER_APPROVED } from '../lib/seed';
+import { MembershipCard } from '../components/MembershipCard';
 import { PakistanFlag, OmanFlag, FlagPair } from '../lib/flags';
 import { 
   ShieldCheck, 
@@ -41,7 +43,9 @@ import {
   FileCheck2,
   Mail,
   Receipt,
-  MessageCircle
+  MessageCircle,
+  Pencil,
+  Trash2
 } from 'lucide-react';
 
 export const AdminRegistrationsPage: React.FC = () => {
@@ -53,6 +57,8 @@ export const AdminRegistrationsPage: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<'pending' | 'approved' | 'rejected' | 'all'>('pending');
   const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
   const [selectedMember, setSelectedMember] = useState<MemberProfile | null>(null);
+  const [editingMember, setEditingMember] = useState<MemberProfile | null>(null);
+  const [cardMember, setCardMember] = useState<MemberProfile | null>(null);
 
   // Quick Approve by Search / Direct Action
   const [quickSearchInput, setQuickSearchInput] = useState('');
@@ -154,6 +160,40 @@ export const AdminRegistrationsPage: React.FC = () => {
   const showToast = (text: string, type: 'success' | 'error' = 'success') => {
     setToastMessage({ text, type });
     setTimeout(() => setToastMessage(null), 4500);
+  };
+
+  const handleDeleteMember = async (memberToDelete: MemberProfile) => {
+    if (!window.confirm(`Delete ${memberToDelete.fullName}'s member record? This cannot be undone.`)) return;
+    try {
+      await deleteDoc(doc(db, 'members', memberToDelete.uid));
+      setMembers((previous) => previous.filter((item) => item.uid !== memberToDelete.uid));
+      setSelectedMember(null);
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem(`plc_member_doc_${memberToDelete.uid}`);
+        localStorage.removeItem(`plc_member_status_${memberToDelete.uid}`);
+        localStorage.removeItem(`plc_member_id_${memberToDelete.uid}`);
+      }
+      showToast(`${memberToDelete.fullName} was deleted.`);
+    } catch (error) {
+      console.error('Could not delete member:', error);
+      showToast('Could not delete this member. Check administrator permissions.', 'error');
+    }
+  };
+
+  const handleSaveMemberEdit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!editingMember) return;
+    try {
+      const { uid, ...editableData } = editingMember;
+      await setDoc(doc(db, 'members', uid), editableData, { merge: true });
+      setMembers((previous) => previous.map((item) => item.uid === uid ? editingMember : item));
+      setSelectedMember(editingMember);
+      setEditingMember(null);
+      showToast(`${editingMember.fullName}'s details were updated.`);
+    } catch (error) {
+      console.error('Could not update member:', error);
+      showToast('Could not save member changes.', 'error');
+    }
   };
 
   // Open confirmation modal for custom note
@@ -1370,7 +1410,30 @@ export const AdminRegistrationsPage: React.FC = () => {
                 Close File
               </button>
 
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingMember(selectedMember)}
+                  className="inline-flex items-center gap-1 px-3 py-2 text-xs font-semibold text-stone-700 hover:bg-stone-100 rounded-xl border border-stone-200"
+                >
+                  <Pencil className="h-3.5 w-3.5" /> Edit
+                </button>
+                {selectedMember.status === 'approved' && (
+                  <button
+                    type="button"
+                    onClick={() => setCardMember(selectedMember)}
+                    className="inline-flex items-center gap-1 px-3 py-2 text-xs font-semibold text-emerald-800 hover:bg-emerald-50 rounded-xl border border-emerald-200"
+                  >
+                    <CreditCard className="h-3.5 w-3.5" /> Card / PDF
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => handleDeleteMember(selectedMember)}
+                  className="inline-flex items-center gap-1 px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-50 rounded-xl border border-rose-200"
+                >
+                  <Trash2 className="h-3.5 w-3.5" /> Delete
+                </button>
                 <button
                   type="button"
                   onClick={() => {
@@ -1397,6 +1460,32 @@ export const AdminRegistrationsPage: React.FC = () => {
             </div>
 
           </div>
+        </div>
+      )}
+
+      {editingMember && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
+          <form onSubmit={handleSaveMemberEdit} className="max-h-[90vh] w-full max-w-lg space-y-4 overflow-y-auto rounded-3xl border border-stone-200 bg-white p-6 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-stone-100 pb-3"><div><h3 className="font-heading text-base font-bold text-[#071F25]">Edit member record</h3><p className="text-xs text-stone-500">Administrator changes are saved to Firestore.</p></div><button type="button" onClick={() => setEditingMember(null)} className="text-stone-400">✕</button></div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <label className="text-xs font-bold text-stone-700">Full name<input required value={editingMember.fullName} onChange={(event) => setEditingMember({ ...editingMember, fullName: event.target.value })} className="mt-1 w-full rounded-xl border border-stone-300 p-2.5 text-sm font-normal" /></label>
+              <label className="text-xs font-bold text-stone-700">Email<input required type="email" value={editingMember.email} onChange={(event) => setEditingMember({ ...editingMember, email: event.target.value })} className="mt-1 w-full rounded-xl border border-stone-300 p-2.5 text-sm font-normal" /></label>
+              <label className="text-xs font-bold text-stone-700">Mobile<input required value={editingMember.mobile} onChange={(event) => setEditingMember({ ...editingMember, mobile: event.target.value })} className="mt-1 w-full rounded-xl border border-stone-300 p-2.5 text-sm font-normal" /></label>
+              <label className="text-xs font-bold text-stone-700">CNIC / Passport<input required value={editingMember.idNumber} onChange={(event) => setEditingMember({ ...editingMember, idNumber: event.target.value })} className="mt-1 w-full rounded-xl border border-stone-300 p-2.5 text-sm font-normal" /></label>
+              <label className="text-xs font-bold text-stone-700">Country<select value={editingMember.country} onChange={(event) => setEditingMember({ ...editingMember, country: event.target.value as MemberCountry })} className="mt-1 w-full rounded-xl border border-stone-300 p-2.5 text-sm font-normal"><option value="Oman">Oman</option><option value="Pakistan">Pakistan</option></select></label>
+              <label className="text-xs font-bold text-stone-700">City / Wilayat<input required value={editingMember.currentLocation} onChange={(event) => setEditingMember({ ...editingMember, currentLocation: event.target.value })} className="mt-1 w-full rounded-xl border border-stone-300 p-2.5 text-sm font-normal" /></label>
+              <label className="text-xs font-bold text-stone-700">Official Member ID<input value={editingMember.memberId || ''} onChange={(event) => setEditingMember({ ...editingMember, memberId: event.target.value })} className="mt-1 w-full rounded-xl border border-stone-300 p-2.5 text-sm font-normal" /></label>
+              <label className="text-xs font-bold text-stone-700">Status<select value={editingMember.status} onChange={(event) => setEditingMember({ ...editingMember, status: event.target.value as MemberStatus })} className="mt-1 w-full rounded-xl border border-stone-300 p-2.5 text-sm font-normal"><option value="pending">Pending</option><option value="approved">Approved</option><option value="rejected">Rejected</option><option value="info_requested">Info requested</option></select></label>
+            </div>
+            <label className="block text-xs font-bold text-stone-700">Admin note<textarea value={editingMember.adminNote || ''} onChange={(event) => setEditingMember({ ...editingMember, adminNote: event.target.value })} rows={3} className="mt-1 w-full rounded-xl border border-stone-300 p-2.5 text-sm font-normal" /></label>
+            <div className="flex justify-end gap-2 border-t border-stone-100 pt-3"><button type="button" onClick={() => setEditingMember(null)} className="rounded-xl px-4 py-2 text-xs font-semibold text-stone-600">Cancel</button><button type="submit" className="rounded-xl bg-[#0D5A31] px-4 py-2 text-xs font-bold text-white">Save member changes</button></div>
+          </form>
+        </div>
+      )}
+
+      {cardMember && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto bg-black/60 p-4">
+          <div className="w-full max-w-5xl rounded-3xl bg-[#F9F7F2] p-4 shadow-2xl sm:p-7"><div className="mb-4 flex items-center justify-between"><div><h3 className="font-heading text-lg font-bold text-[#071F25]">Membership card export</h3><p className="text-xs text-stone-500">Download the card image or use Print to save it as a PDF.</p></div><button type="button" onClick={() => setCardMember(null)} className="text-stone-500">✕</button></div><MembershipCard member={cardMember} /></div>
         </div>
       )}
 

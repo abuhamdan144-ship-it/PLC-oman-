@@ -10,13 +10,13 @@ export interface EmergencyContact {
 
 export interface MemberProfile {
   uid: string;
-  memberId?: string; // e.g., PLC-2026-00001
+  memberId?: string;
   fullName: string;
   email: string;
   mobile: string;
   country: MemberCountry;
-  currentLocation: string; // City / Province / Wilayat
-  idNumber: string; // CNIC or Passport
+  currentLocation: string;
+  idNumber: string;
   photoURL?: string;
   paymentReceiptURL?: string;
   receiptReference?: string;
@@ -29,7 +29,6 @@ export interface MemberProfile {
   role: MemberRole;
 }
 
-/** Minimal fields exposed by the public QR verifier; never include contact or ID data. */
 export interface PublicMemberProfile {
   uid: string;
   memberId: string;
@@ -46,11 +45,26 @@ export interface ElectionOption {
   label: string;
 }
 
+export interface ElectionNominee {
+  id: string;
+  name: string;
+  memberId?: string;
+  bio?: string;
+}
+
+export interface ElectionPosition {
+  id: string;
+  title: string;
+  nominees: ElectionNominee[];
+}
+
 export interface CommunityElection {
   title: string;
   description: string;
-  options: ElectionOption[];
-  optionIds: string[];
+  positions?: ElectionPosition[];
+  // Kept for compatibility with ballots created before the cabinet-position flow.
+  options?: ElectionOption[];
+  optionIds?: string[];
   status: 'open' | 'closed';
   closesAt: import('firebase/firestore').Timestamp;
   createdAt?: import('firebase/firestore').Timestamp;
