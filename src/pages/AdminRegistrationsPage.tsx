@@ -51,6 +51,7 @@ export const AdminRegistrationsPage: React.FC = () => {
   const { user, member: currentAdmin } = useAuth();
   
   const [members, setMembers] = useState<MemberProfile[]>([]);
+  const [failedPhotoUrls, setFailedPhotoUrls] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -137,6 +138,10 @@ export const AdminRegistrationsPage: React.FC = () => {
   const handleSaveMemberEdit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!editingMember) return;
+    if (editingMember.photoURL && !/^https:\/\//i.test(editingMember.photoURL.trim())) {
+      showToast('Member photo must use a public HTTPS image URL.', 'error');
+      return;
+    }
     try {
       const { uid, ...editableData } = editingMember;
       await setDoc(doc(db, 'members', uid), editableData, { merge: true });
@@ -712,11 +717,12 @@ export const AdminRegistrationsPage: React.FC = () => {
                   <div>
                     <div className="flex items-start justify-between gap-3 mb-3">
                       <div className="flex items-center gap-3">
-                        {m.photoURL ? (
+                        {m.photoURL && failedPhotoUrls[m.uid] !== m.photoURL ? (
                           <img
                             src={m.photoURL}
                             alt={m.fullName}
                             className="w-12 h-14 object-cover rounded-xl border border-stone-200 shrink-0"
+                            onError={() => setFailedPhotoUrls((previous) => ({ ...previous, [m.uid]: m.photoURL || '' }))}
                           />
                         ) : (
                           <div className="w-12 h-14 bg-stone-100 border border-stone-200 rounded-xl flex items-center justify-center font-bold text-stone-400 text-base shrink-0">
@@ -925,11 +931,12 @@ export const AdminRegistrationsPage: React.FC = () => {
                         {/* Member Name + Photo */}
                         <td className="py-3.5 px-4">
                           <div className="flex items-center gap-3">
-                            {m.photoURL ? (
+                            {m.photoURL && failedPhotoUrls[m.uid] !== m.photoURL ? (
                               <img
                                 src={m.photoURL}
                                 alt={m.fullName}
                                 className="w-9 h-11 object-cover rounded-md border border-stone-200 shrink-0"
+                                onError={() => setFailedPhotoUrls((previous) => ({ ...previous, [m.uid]: m.photoURL || '' }))}
                               />
                             ) : (
                               <div className="w-9 h-11 bg-stone-100 border border-stone-200 rounded-md flex items-center justify-center font-bold text-stone-400 text-sm shrink-0">
@@ -1453,6 +1460,7 @@ export const AdminRegistrationsPage: React.FC = () => {
               <label className="text-xs font-bold text-stone-700">City / Wilayat<input required value={editingMember.currentLocation} onChange={(event) => setEditingMember({ ...editingMember, currentLocation: event.target.value })} className="mt-1 w-full rounded-xl border border-stone-300 p-2.5 text-sm font-normal" /></label>
               <label className="text-xs font-bold text-stone-700">Official Member ID<input value={editingMember.memberId || ''} onChange={(event) => setEditingMember({ ...editingMember, memberId: event.target.value })} className="mt-1 w-full rounded-xl border border-stone-300 p-2.5 text-sm font-normal" /></label>
               <label className="text-xs font-bold text-stone-700">Status<select value={editingMember.status} onChange={(event) => setEditingMember({ ...editingMember, status: event.target.value as MemberStatus })} className="mt-1 w-full rounded-xl border border-stone-300 p-2.5 text-sm font-normal"><option value="pending">Pending</option><option value="approved">Approved</option><option value="rejected">Rejected</option><option value="info_requested">Info requested</option></select></label>
+              <label className="text-xs font-bold text-stone-700 sm:col-span-2">Member photo URL (public HTTPS image)<input type="url" value={editingMember.photoURL || ''} onChange={(event) => setEditingMember({ ...editingMember, photoURL: event.target.value })} placeholder="https://example.com/member-photo.jpg" className="mt-1 w-full rounded-xl border border-stone-300 p-2.5 text-sm font-normal" /><span className="mt-1 block text-[10px] font-normal text-stone-500">Use a direct image link that can be viewed without signing in.</span></label>
             </div>
             <label className="block text-xs font-bold text-stone-700">Admin note<textarea value={editingMember.adminNote || ''} onChange={(event) => setEditingMember({ ...editingMember, adminNote: event.target.value })} rows={3} className="mt-1 w-full rounded-xl border border-stone-300 p-2.5 text-sm font-normal" /></label>
             <div className="flex justify-end gap-2 border-t border-stone-100 pt-3"><button type="button" onClick={() => setEditingMember(null)} className="rounded-xl px-4 py-2 text-xs font-semibold text-stone-600">Cancel</button><button type="submit" className="rounded-xl bg-[#0D5A31] px-4 py-2 text-xs font-bold text-white">Save member changes</button></div>

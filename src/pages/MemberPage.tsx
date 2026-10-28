@@ -1,13 +1,11 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { MembershipCard } from '../components/MembershipCard';
 import { VotingPanel } from '../components/VotingPanel';
 import { PakistanLabourCommunityLogo } from '../lib/logo';
 import { FlagPair } from '../lib/flags';
-import { compressImage } from '../lib/imageCompressor';
 import { doc, updateDoc, addDoc, collection } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { db, storage } from '../lib/firebase';
+import { db } from '../lib/firebase';
 import { TermsModal } from '../components/TermsModal';
 import { 
   ShieldCheck, 
@@ -20,7 +18,6 @@ import {
   Check, 
   Save, 
   Edit3, 
-  Upload, 
   MapPin, 
   HeartHandshake, 
   ExternalLink,
@@ -44,8 +41,7 @@ export const MemberPage: React.FC = () => {
   const [editEmergencyName, setEditEmergencyName] = useState(member?.emergencyContact?.name || '');
   const [editEmergencyPhone, setEditEmergencyPhone] = useState(member?.emergencyContact?.phone || '');
   const [editEmergencyRelation, setEditEmergencyRelation] = useState(member?.emergencyContact?.relation || '');
-  const [newPhotoFile, setNewPhotoFile] = useState<File | null>(null);
-  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [photoURLInput, setPhotoURLInput] = useState(member?.photoURL || '');
   const [isUpdating, setIsUpdating] = useState(false);
   const [updateMessage, setUpdateMessage] = useState<string | null>(null);
 
@@ -61,6 +57,10 @@ export const MemberPage: React.FC = () => {
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [copiedFundAccount, setCopiedFundAccount] = useState(false);
 
+  useEffect(() => {
+    setPhotoURLInput(member?.photoURL || '');
+  }, [member?.photoURL]);
+
   const handleCopyFundAccount = () => {
     navigator.clipboard.writeText('96766876');
     setCopiedFundAccount(true);
@@ -71,32 +71,18 @@ export const MemberPage: React.FC = () => {
     return null;
   }
 
-  const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      setNewPhotoFile(file);
-      setPhotoPreview(URL.createObjectURL(file));
-    }
-  };
-
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
+    const photoURL = photoURLInput.trim();
+    if (photoURL && !/^https:\/\//i.test(photoURL)) {
+      setUpdateMessage('Use a public HTTPS image URL for your profile photo.');
+      return;
+    }
     setIsUpdating(true);
     setUpdateMessage(null);
 
     try {
-      let photoURL = member.photoURL;
-
-      if (newPhotoFile) {
-        const compressedBlob = await compressImage(newPhotoFile, 400 * 1024, 800);
-        const storageRef = ref(storage, `profile-photos/${user.uid}/profile_${Date.now()}.jpg`);
-        const uploadResult = await uploadBytes(storageRef, compressedBlob, {
-          contentType: 'image/jpeg',
-        });
-        photoURL = await getDownloadURL(uploadResult.ref);
-      }
-
       const memberDocRef = doc(db, 'members', user.uid);
       await updateDoc(memberDocRef, {
         mobile: editMobile.trim(),
@@ -106,7 +92,7 @@ export const MemberPage: React.FC = () => {
           phone: editEmergencyPhone.trim(),
           relation: editEmergencyRelation.trim() || 'Family',
         },
-        ...(photoURL ? { photoURL } : {}),
+        photoURL,
       });
 
       setUpdateMessage('Profile details updated successfully!');
@@ -464,29 +450,25 @@ export const MemberPage: React.FC = () => {
             <form onSubmit={handleUpdateProfile} className="space-y-6">
               
               {/* Photo */}
-              <div className="flex items-center gap-4 p-4 rounded-xl border border-stone-200">
-                <img
-                  src={photoPreview || member.photoURL || 'https://via.placeholder.com/150'}
-                  alt="Member Photo"
-                  className="w-16 h-20 object-cover rounded-lg border-2 border-[#E4AE2F]"
-                />
-                <div>
-                  <label className="block text-xs font-bold text-[#071F25] mb-1">
-                    Card Profile Photo
-                  </label>
-                  {isEditingProfile ? (
-                    <div>
-                      <label className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-stone-300 rounded-lg text-xs font-semibold cursor-pointer hover:bg-stone-50">
-                        <Upload className="w-3.5 h-3.5" />
-                        <span>Upload New Photo</span>
-                        <input type="file" accept="image/*" onChange={handlePhotoSelect} className="sr-only" />
-                      </label>
-                      <p className="text-[10px] text-stone-500 mt-1">Compressed automatically under 500 KB.</p>
-                    </div>
-                  ) : (
-                    <p className="text-xs text-stone-500">Current photo active on digital card</p>
-                  )}
+              <div className="rounded-xl border border-stone-200 p-4">
+                <div className="flex items-center gap-4">
+                  <img
+                    src={(isEditingProfile ? photoURLInput : member.photoURL) || 'https://via.placeholder.com/150'}
+                    alt="Member Photo"
+                    className="h-20 w-16 rounded-lg border-2 border-[#E4AE2F] object-cover"
+                  />
+                  <div>
+                    <label className="block text-xs font-bold text-[#071F25] mb-1">Card Profile Photo</label>
+                    <p className="text-xs text-stone-500">Displayed on your digital membership card and in the admin member list.</p>
+                  </div>
                 </div>
+                {isEditingProfile && (
+                  <label htmlFor="edit-photo-url" className="mt-3 block text-xs font-bold text-[#071F25]">
+                    Public HTTPS image URL
+                    <input id="edit-photo-url" type="url" value={photoURLInput} onChange={(event) => setPhotoURLInput(event.target.value)} placeholder="https://example.com/member-photo.jpg" className="mt-1 w-full rounded-xl border border-stone-300 px-3 py-2.5 text-xs font-normal" />
+                    <span className="mt-1 block text-[10px] font-normal text-stone-500">Use a direct image link that anyone can view. Phone uploads require Firebase Storage, which is not enabled for this project.</span>
+                  </label>
+                )}
               </div>
 
               {/* Editable Fields */}
@@ -558,8 +540,7 @@ export const MemberPage: React.FC = () => {
                       setEditLocation(member.currentLocation);
                       setEditEmergencyName(member.emergencyContact?.name || '');
                       setEditEmergencyPhone(member.emergencyContact?.phone || '');
-                      setNewPhotoFile(null);
-                      setPhotoPreview(null);
+                      setPhotoURLInput(member.photoURL || '');
                     }}
                     className="px-4 py-2 text-xs font-semibold text-stone-600 hover:bg-stone-100 rounded-lg"
                   >

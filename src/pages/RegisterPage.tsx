@@ -18,7 +18,6 @@ import {
   MapPin, 
   FileCheck, 
   Camera, 
-  Upload, 
   AlertCircle, 
   CheckCircle2, 
   ArrowRight,
@@ -56,8 +55,8 @@ export const RegisterPage: React.FC = () => {
   const [emergencyPhone, setEmergencyPhone] = useState('');
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [showTermsModal, setShowTermsModal] = useState(false);
-  const [photoFile, setPhotoFile] = useState<File | null>(null);
-  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [photoURLInput, setPhotoURLInput] = useState('');
+  const [photoUrlPreviewFailed, setPhotoUrlPreviewFailed] = useState(false);
 
   // Payment receipt state
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
@@ -116,24 +115,6 @@ export const RegisterPage: React.FC = () => {
     window.open(url, '_blank', 'noopener,noreferrer');
   };
 
-  const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      if (!file.type.startsWith('image/')) {
-        setFieldErrors(prev => ({ ...prev, photo: 'Please select a valid image file (JPG, PNG, WebP).' }));
-        return;
-      }
-      setFieldErrors(prev => {
-        const copy = { ...prev };
-        delete copy.photo;
-        return copy;
-      });
-      setPhotoFile(file);
-      const url = URL.createObjectURL(file);
-      setPhotoPreview(url);
-    }
-  };
-
   const handleFillDemo = () => {
     setFullName(SAMPLE_MEMBER_PENDING.fullName);
     setEmail(`bilal.sample_${Math.floor(1000 + Math.random() * 9000)}@example.com`);
@@ -167,6 +148,10 @@ export const RegisterPage: React.FC = () => {
 
     if (!currentLocation.trim()) {
       errors.currentLocation = 'Please provide your current city or district (e.g. Muscat, Sohar, Lahore).';
+    }
+
+    if (photoURLInput.trim() && !/^https:\/\//i.test(photoURLInput.trim())) {
+      errors.photoURL = 'Use a public HTTPS image URL.';
     }
 
     if (!idNumber.trim() || idNumber.trim().length < 6) {
@@ -204,20 +189,8 @@ export const RegisterPage: React.FC = () => {
       const userCredential = await createUserWithEmailAndPassword(auth, email.trim(), password);
       const user = userCredential.user;
 
-      // 2. Upload photo if selected (compress client-side to < 500 KB first)
-      let photoURL = '';
-      if (photoFile) {
-        try {
-          const compressedBlob = await compressImage(photoFile, 400 * 1024, 800);
-          const storageRef = ref(storage, `profile-photos/${user.uid}/profile_${Date.now()}.jpg`);
-          const uploadResult = await uploadBytes(storageRef, compressedBlob, {
-            contentType: 'image/jpeg',
-          });
-          photoURL = await getDownloadURL(uploadResult.ref);
-        } catch (photoErr) {
-          console.warn('Photo upload warning (continuing registration without photo):', photoErr);
-        }
-      }
+      // Photo URLs are stored directly so members can add images without Firebase Storage.
+      const photoURL = photoURLInput.trim();
 
       // 2b. Upload payment receipt if selected
       let paymentReceiptURL = '';
@@ -542,11 +515,12 @@ export const RegisterPage: React.FC = () => {
             {/* Profile Photo Upload (Optional, with client-side compression) */}
             <div className="flex flex-col sm:flex-row items-center gap-5 p-4 rounded-xl bg-stone-50 border border-stone-200">
               <div className="relative">
-                {photoPreview ? (
+                {photoURLInput && !photoUrlPreviewFailed ? (
                   <img
-                    src={photoPreview}
-                    alt="Selected preview"
+                    src={photoURLInput}
+                    alt="Member photo preview"
                     className="w-20 h-24 object-cover rounded-xl border-2 border-[#E4AE2F] shadow-sm"
+                    onError={() => setPhotoUrlPreviewFailed(true)}
                   />
                 ) : (
                   <div className="w-20 h-24 rounded-xl bg-stone-200 border-2 border-dashed border-stone-300 flex flex-col items-center justify-center text-stone-500">
@@ -561,23 +535,24 @@ export const RegisterPage: React.FC = () => {
                   Member Photo (Optional for Membership Card)
                 </label>
                 <p className="text-[11px] text-stone-500 mb-2 leading-relaxed">
-                  Clear front-facing passport style photo. Automatically compressed to under 500 KB.
+                  Use a direct, publicly accessible HTTPS image link. The same image appears on the membership card and admin list.
                 </p>
-                <label className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-stone-100 text-stone-700 border border-stone-300 rounded-lg text-xs font-semibold cursor-pointer shadow-xs transition-colors">
-                  <Upload className="w-3.5 h-3.5 text-stone-500" />
-                  <span>{photoPreview ? 'Change Photo' : 'Upload Photo'}</span>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handlePhotoSelect}
-                    className="sr-only"
-                  />
-                </label>
+                <input
+                  id="member-photo-url"
+                  type="url"
+                  value={photoURLInput}
+                  onChange={(event) => {
+                    setPhotoURLInput(event.target.value);
+                    setPhotoUrlPreviewFailed(false);
+                  }}
+                  placeholder="https://example.com/member-photo.jpg"
+                  className="w-full rounded-xl border border-stone-300 px-3 py-2 text-xs font-normal"
+                />
                 <p className="mt-2 text-[10px] leading-relaxed text-amber-800">
-                  Photo uploads need Firebase Storage, which is not enabled for this project yet. Registration can continue, but the photo will not be saved until Storage is set up.
+                  Firebase Storage is not enabled, so phone photo uploads are unavailable. Leave blank if you do not have a hosted HTTPS image link.
                 </p>
-                {fieldErrors.photo && (
-                  <p className="text-xs text-rose-600 mt-1">{fieldErrors.photo}</p>
+                {fieldErrors.photoURL && (
+                  <p className="text-xs text-rose-600 mt-1">{fieldErrors.photoURL}</p>
                 )}
               </div>
             </div>
