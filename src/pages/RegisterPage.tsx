@@ -6,7 +6,7 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { auth, db, storage } from '../lib/firebase';
 import { PakistanLabourCommunityLogo } from '../lib/logo';
 import { FlagPair } from '../lib/flags';
-import { compressImage } from '../lib/imageCompressor';
+import { compressImage, compressImageToDataUrl } from '../lib/imageCompressor';
 import { MemberCountry } from '../types';
 import { SAMPLE_MEMBER_PENDING } from '../lib/seed';
 import { TermsModal } from '../components/TermsModal';
@@ -18,6 +18,7 @@ import {
   MapPin, 
   FileCheck, 
   Camera, 
+  Upload,
   AlertCircle, 
   CheckCircle2, 
   ArrowRight,
@@ -55,8 +56,8 @@ export const RegisterPage: React.FC = () => {
   const [emergencyPhone, setEmergencyPhone] = useState('');
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [showTermsModal, setShowTermsModal] = useState(false);
-  const [photoURLInput, setPhotoURLInput] = useState('');
-  const [photoUrlPreviewFailed, setPhotoUrlPreviewFailed] = useState(false);
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
 
   // Payment receipt state
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
@@ -86,6 +87,23 @@ export const RegisterPage: React.FC = () => {
         setReceiptPreview(null);
       }
     }
+  };
+
+  const handlePhotoSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setFieldErrors((previous) => ({ ...previous, photo: 'Please choose an image file.' }));
+      event.target.value = '';
+      return;
+    }
+    setFieldErrors((previous) => {
+      const next = { ...previous };
+      delete next.photo;
+      return next;
+    });
+    setPhotoFile(file);
+    setPhotoPreview(URL.createObjectURL(file));
   };
 
   const handleSendWhatsAppReceipt = () => {
@@ -150,10 +168,6 @@ export const RegisterPage: React.FC = () => {
       errors.currentLocation = 'Please provide your current city or district (e.g. Muscat, Sohar, Lahore).';
     }
 
-    if (photoURLInput.trim() && !/^https:\/\//i.test(photoURLInput.trim())) {
-      errors.photoURL = 'Use a public HTTPS image URL.';
-    }
-
     if (!idNumber.trim() || idNumber.trim().length < 6) {
       errors.idNumber = 'Please enter your CNIC or Passport number for verification.';
     }
@@ -185,12 +199,11 @@ export const RegisterPage: React.FC = () => {
     setIsSubmitting(true);
 
     try {
+      // Save a small membership-card thumbnail in Firestore; no Storage bucket is required.
+      const photoURL = photoFile ? await compressImageToDataUrl(photoFile, 32 * 1024, 320) : '';
       // 1. Create Firebase Auth user
       const userCredential = await createUserWithEmailAndPassword(auth, email.trim(), password);
       const user = userCredential.user;
-
-      // Photo URLs are stored directly so members can add images without Firebase Storage.
-      const photoURL = photoURLInput.trim();
 
       // 2b. Upload payment receipt if selected
       let paymentReceiptURL = '';
@@ -512,15 +525,14 @@ export const RegisterPage: React.FC = () => {
               </button>
             </div>
 
-            {/* Profile Photo Upload (Optional, with client-side compression) */}
+            {/* Profile Photo Upload (Optional, compressed for Firestore) */}
             <div className="flex flex-col sm:flex-row items-center gap-5 p-4 rounded-xl bg-stone-50 border border-stone-200">
               <div className="relative">
-                {photoURLInput && !photoUrlPreviewFailed ? (
+                {photoPreview ? (
                   <img
-                    src={photoURLInput}
-                    alt="Member photo preview"
+                    src={photoPreview}
+                    alt="Selected member photo preview"
                     className="w-20 h-24 object-cover rounded-xl border-2 border-[#E4AE2F] shadow-sm"
-                    onError={() => setPhotoUrlPreviewFailed(true)}
                   />
                 ) : (
                   <div className="w-20 h-24 rounded-xl bg-stone-200 border-2 border-dashed border-stone-300 flex flex-col items-center justify-center text-stone-500">
@@ -535,24 +547,16 @@ export const RegisterPage: React.FC = () => {
                   Member Photo (Optional for Membership Card)
                 </label>
                 <p className="text-[11px] text-stone-500 mb-2 leading-relaxed">
-                  Use a direct, publicly accessible HTTPS image link. The same image appears on the membership card and admin list.
+                  Choose a clear member photo from your phone. It is compressed automatically for the membership card.
                 </p>
-                <input
-                  id="member-photo-url"
-                  type="url"
-                  value={photoURLInput}
-                  onChange={(event) => {
-                    setPhotoURLInput(event.target.value);
-                    setPhotoUrlPreviewFailed(false);
-                  }}
-                  placeholder="https://example.com/member-photo.jpg"
-                  className="w-full rounded-xl border border-stone-300 px-3 py-2 text-xs font-normal"
-                />
-                <p className="mt-2 text-[10px] leading-relaxed text-amber-800">
-                  Firebase Storage is not enabled, so phone photo uploads are unavailable. Leave blank if you do not have a hosted HTTPS image link.
-                </p>
-                {fieldErrors.photoURL && (
-                  <p className="text-xs text-rose-600 mt-1">{fieldErrors.photoURL}</p>
+                <label className="inline-flex items-center gap-1.5 rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-xs font-semibold text-stone-700 shadow-xs transition-colors hover:bg-stone-100">
+                  <Upload className="h-3.5 w-3.5 text-stone-500" />
+                  <span>{photoPreview ? 'Change Photo' : 'Upload Photo'}</span>
+                  <input type="file" accept="image/*" onChange={handlePhotoSelect} className="sr-only" />
+                </label>
+                <p className="mt-2 text-[10px] leading-relaxed text-stone-500">A small compressed thumbnail is saved with your member record; Firebase Storage and billing are not required.</p>
+                {fieldErrors.photo && (
+                  <p className="mt-1 text-xs text-rose-600">{fieldErrors.photo}</p>
                 )}
               </div>
             </div>

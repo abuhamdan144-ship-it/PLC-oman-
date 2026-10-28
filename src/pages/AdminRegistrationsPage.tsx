@@ -13,6 +13,7 @@ import { db } from '../lib/firebase';
 import { useAuth } from '../hooks/useAuth';
 import { MemberProfile, MemberStatus, MemberCountry } from '../types';
 import { MembershipCard } from '../components/MembershipCard';
+import { compressImageToDataUrl } from '../lib/imageCompressor';
 import { PakistanFlag, OmanFlag, FlagPair } from '../lib/flags';
 import { 
   ShieldCheck, 
@@ -138,10 +139,6 @@ export const AdminRegistrationsPage: React.FC = () => {
   const handleSaveMemberEdit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!editingMember) return;
-    if (editingMember.photoURL && !/^https:\/\//i.test(editingMember.photoURL.trim())) {
-      showToast('Member photo must use a public HTTPS image URL.', 'error');
-      return;
-    }
     try {
       const { uid, ...editableData } = editingMember;
       await setDoc(doc(db, 'members', uid), editableData, { merge: true });
@@ -169,7 +166,7 @@ export const AdminRegistrationsPage: React.FC = () => {
   };
 
   // Core execution: Approve a member and assign official ID
-  const executeApproval = async (memberToApprove: MemberProfile, customNote?: string): Promise<boolean> => {
+  const executeApproval = async (memberToApprove: MemberProfile, customNote?: string): Promise<MemberProfile | false> => {
     setActionProcessing(true);
     const now = new Date();
     const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -184,6 +181,14 @@ export const AdminRegistrationsPage: React.FC = () => {
     }
 
     const note = customNote || adminNoteInput.trim() || 'Verified and approved by Community Administrator.';
+    const approvedMember: MemberProfile = {
+      ...memberToApprove,
+      status: 'approved',
+      memberId: generatedMemberId,
+      approvedAt: nowIso,
+      memberSince: memberSinceStr,
+      adminNote: note,
+    };
 
     // Firestore is the source of truth: only update the UI after its write succeeds.
     try {
@@ -203,19 +208,12 @@ export const AdminRegistrationsPage: React.FC = () => {
       setMembers((prev) =>
         prev.map((m) =>
           m.uid === memberToApprove.uid
-            ? { ...m, status: 'approved', memberId: generatedMemberId, approvedAt: nowIso, memberSince: memberSinceStr, adminNote: note }
+            ? approvedMember
             : m
         )
       );
       if (selectedMember?.uid === memberToApprove.uid) {
-        setSelectedMember({
-          ...selectedMember,
-          status: 'approved',
-          memberId: generatedMemberId,
-          approvedAt: nowIso,
-          memberSince: memberSinceStr,
-          adminNote: note,
-        });
+        setSelectedMember(approvedMember);
       }
 
       // Add Welcome notification to member's notifications subcollection
@@ -231,7 +229,7 @@ export const AdminRegistrationsPage: React.FC = () => {
         console.warn('Could not add subcollection notification:', notifErr);
       }
       showToast(`Member ${memberToApprove.fullName} has been approved with Official ID ${generatedMemberId}!`);
-      return true;
+      return approvedMember;
     } catch (err) {
       console.error('Could not persist member approval:', err);
       showToast('Approval was not saved to Firebase. The member status has not been changed; please retry.', 'error');
@@ -246,6 +244,11 @@ export const AdminRegistrationsPage: React.FC = () => {
   // Direct 1-Click Fast Approval
   const handleFastApprove = (member: MemberProfile) => {
     executeApproval(member);
+  };
+
+  const handleApproveAndOpenCard = async (member: MemberProfile) => {
+    const approvedMember = await executeApproval(member);
+    if (approvedMember) setCardMember(approvedMember);
   };
 
   // Execute confirmation modal approval
@@ -877,18 +880,27 @@ export const AdminRegistrationsPage: React.FC = () => {
                         onClick={() => openActionModal(m, 'reject')}
                         className="text-rose-700 hover:underline font-semibold"
                       >
-                        Decline
+                        Reject
                       </button>
                     </div>
 
                     <div className="flex items-center gap-2 border-t border-stone-100 pt-2">
-                      {isApproved && (
+                      {isApproved ? (
                         <button
                           type="button"
                           onClick={() => setCardMember(m)}
                           className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] font-bold text-emerald-900 hover:bg-emerald-100"
                         >
-                          <CreditCard className="h-3.5 w-3.5" /> Card / PDF
+                          <CreditCard className="h-3.5 w-3.5" /> Download Card
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => handleApproveAndOpenCard(m)}
+                          disabled={actionProcessing}
+                          className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-emerald-700 px-3 py-2 text-[11px] font-bold text-white hover:bg-emerald-800 disabled:opacity-50"
+                        >
+                          <CreditCard className="h-3.5 w-3.5" /> Approve &amp; Download Card
                         </button>
                       )}
                       <button
@@ -1050,16 +1062,17 @@ export const AdminRegistrationsPage: React.FC = () => {
                               Info
                             </button>
 
-                            {/* Decline */}
-                            <button
-                              type="button"
-                              onClick={() => openActionModal(m, 'reject')}
-                              className="p-1.5 text-rose-600 hover:text-rose-800 hover:bg-rose-50 rounded-xl transition-colors"
-                              title="Decline Application"
-                              aria-label={`Decline ${m.fullName}`}
-                            >
-                              <XCircle className="w-4 h-4" />
-                            </button>
+                      {/* Reject */}
+                      <button
+                        type="button"
+                        onClick={() => openActionModal(m, 'reject')}
+                        className="inline-flex items-center gap-1 rounded-xl px-2 py-1.5 text-xs font-semibold text-rose-700 transition-colors hover:bg-rose-50 hover:text-rose-900"
+                        title="Reject Application"
+                        aria-label={`Decline ${m.fullName}`}
+                      >
+                        <XCircle className="w-4 h-4" />
+                        <span>Reject</span>
+                      </button>
 
                             {/* Inspect File */}
                             <button
@@ -1072,26 +1085,39 @@ export const AdminRegistrationsPage: React.FC = () => {
                               <Eye className="w-4 h-4" />
                             </button>
 
-                            {isApproved && (
+                            {isApproved ? (
                               <button
                                 type="button"
                                 onClick={() => setCardMember(m)}
-                                className="p-1.5 text-emerald-700 hover:text-emerald-900 hover:bg-emerald-50 rounded-xl transition-colors"
+                                className="inline-flex items-center gap-1 rounded-xl px-2 py-1.5 text-xs font-semibold text-emerald-700 transition-colors hover:bg-emerald-50 hover:text-emerald-900"
                                 title="Open or download membership card"
                                 aria-label={`Open membership card for ${m.fullName}`}
                               >
                                 <CreditCard className="w-4 h-4" />
+                                <span>Card</span>
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => handleApproveAndOpenCard(m)}
+                                disabled={actionProcessing}
+                                className="inline-flex items-center gap-1 rounded-xl bg-emerald-700 px-2.5 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-emerald-800 disabled:opacity-50"
+                                title="Approve this pending member, then open their card"
+                              >
+                                <CreditCard className="w-4 h-4" />
+                                <span>Approve &amp; Card</span>
                               </button>
                             )}
 
                             <button
                               type="button"
                               onClick={() => handleDeleteMember(m)}
-                              className="p-1.5 text-rose-600 hover:text-rose-800 hover:bg-rose-50 rounded-xl transition-colors"
+                              className="inline-flex items-center gap-1 rounded-xl px-2 py-1.5 text-xs font-semibold text-rose-600 transition-colors hover:bg-rose-50 hover:text-rose-800"
                               title="Delete member record"
                               aria-label={`Delete ${m.fullName}`}
                             >
                               <Trash2 className="w-4 h-4" />
+                              <span>Delete</span>
                             </button>
 
                           </div>
@@ -1460,7 +1486,21 @@ export const AdminRegistrationsPage: React.FC = () => {
               <label className="text-xs font-bold text-stone-700">City / Wilayat<input required value={editingMember.currentLocation} onChange={(event) => setEditingMember({ ...editingMember, currentLocation: event.target.value })} className="mt-1 w-full rounded-xl border border-stone-300 p-2.5 text-sm font-normal" /></label>
               <label className="text-xs font-bold text-stone-700">Official Member ID<input value={editingMember.memberId || ''} onChange={(event) => setEditingMember({ ...editingMember, memberId: event.target.value })} className="mt-1 w-full rounded-xl border border-stone-300 p-2.5 text-sm font-normal" /></label>
               <label className="text-xs font-bold text-stone-700">Status<select value={editingMember.status} onChange={(event) => setEditingMember({ ...editingMember, status: event.target.value as MemberStatus })} className="mt-1 w-full rounded-xl border border-stone-300 p-2.5 text-sm font-normal"><option value="pending">Pending</option><option value="approved">Approved</option><option value="rejected">Rejected</option><option value="info_requested">Info requested</option></select></label>
-              <label className="text-xs font-bold text-stone-700 sm:col-span-2">Member photo URL (public HTTPS image)<input type="url" value={editingMember.photoURL || ''} onChange={(event) => setEditingMember({ ...editingMember, photoURL: event.target.value })} placeholder="https://example.com/member-photo.jpg" className="mt-1 w-full rounded-xl border border-stone-300 p-2.5 text-sm font-normal" /><span className="mt-1 block text-[10px] font-normal text-stone-500">Use a direct image link that can be viewed without signing in.</span></label>
+              <label className="text-xs font-bold text-stone-700 sm:col-span-2">Member photo
+                <input type="file" accept="image/*" onChange={async (event) => {
+                  const file = event.target.files?.[0];
+                  if (!file) return;
+                  try {
+                    const photoURL = await compressImageToDataUrl(file, 32 * 1024, 320);
+                    setEditingMember({ ...editingMember, photoURL });
+                  } catch (error) {
+                    showToast(error instanceof Error ? error.message : 'Could not process this photo.', 'error');
+                    event.target.value = '';
+                  }
+                }} className="mt-1 block w-full text-xs font-normal" />
+                <span className="mt-1 block text-[10px] font-normal text-stone-500">Choose a photo from your phone. It is automatically compressed for the membership card.</span>
+                {editingMember.photoURL && <img src={editingMember.photoURL} alt="Member photo preview" className="mt-2 h-20 w-16 rounded-lg border border-stone-200 object-cover" />}
+              </label>
             </div>
             <label className="block text-xs font-bold text-stone-700">Admin note<textarea value={editingMember.adminNote || ''} onChange={(event) => setEditingMember({ ...editingMember, adminNote: event.target.value })} rows={3} className="mt-1 w-full rounded-xl border border-stone-300 p-2.5 text-sm font-normal" /></label>
             <div className="flex justify-end gap-2 border-t border-stone-100 pt-3"><button type="button" onClick={() => setEditingMember(null)} className="rounded-xl px-4 py-2 text-xs font-semibold text-stone-600">Cancel</button><button type="submit" className="rounded-xl bg-[#0D5A31] px-4 py-2 text-xs font-bold text-white">Save member changes</button></div>

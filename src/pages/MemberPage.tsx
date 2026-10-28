@@ -1,10 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { MembershipCard } from '../components/MembershipCard';
 import { VotingPanel } from '../components/VotingPanel';
 import { PakistanLabourCommunityLogo } from '../lib/logo';
 import { FlagPair } from '../lib/flags';
-import { doc, updateDoc, addDoc, collection } from 'firebase/firestore';
+import { compressImageToDataUrl } from '../lib/imageCompressor';
+import { doc, updateDoc, addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { TermsModal } from '../components/TermsModal';
 import { 
@@ -18,6 +19,7 @@ import {
   Check, 
   Save, 
   Edit3, 
+  Upload,
   MapPin, 
   HeartHandshake, 
   ExternalLink,
@@ -27,6 +29,15 @@ import {
   Copy,
   AlertCircle
 } from 'lucide-react';
+
+type IncidentCategory = 'death' | 'injury' | 'lost' | 'found';
+
+const INCIDENT_CATEGORY_LABELS: Record<IncidentCategory, string> = {
+  death: 'Death of registered member',
+  injury: 'Injured',
+  lost: 'Lost',
+  found: 'Found',
+};
 
 export const MemberPage: React.FC = () => {
   const { member, user, notifications, markNotificationAsRead, isAdmin } = useAuth();
@@ -41,25 +52,22 @@ export const MemberPage: React.FC = () => {
   const [editEmergencyName, setEditEmergencyName] = useState(member?.emergencyContact?.name || '');
   const [editEmergencyPhone, setEditEmergencyPhone] = useState(member?.emergencyContact?.phone || '');
   const [editEmergencyRelation, setEditEmergencyRelation] = useState(member?.emergencyContact?.relation || '');
-  const [photoURLInput, setPhotoURLInput] = useState(member?.photoURL || '');
+  const [newPhotoFile, setNewPhotoFile] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
   const [updateMessage, setUpdateMessage] = useState<string | null>(null);
 
   // Incident reporting form state
-  const [incidentSubject, setIncidentSubject] = useState('');
-  const [incidentCategory, setIncidentCategory] = useState('wages');
+  const [incidentCategory, setIncidentCategory] = useState<IncidentCategory | ''>('');
+  const [incidentLocation, setIncidentLocation] = useState('');
   const [incidentDetails, setIncidentDetails] = useState('');
-  const [incidentUrgency, setIncidentUrgency] = useState('normal');
   const [isSubmittingIncident, setIsSubmittingIncident] = useState(false);
   const [incidentSubmitted, setIncidentSubmitted] = useState(false);
+  const [incidentError, setIncidentError] = useState<string | null>(null);
 
   // Community Charter Modal & Account Copy state
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [copiedFundAccount, setCopiedFundAccount] = useState(false);
-
-  useEffect(() => {
-    setPhotoURLInput(member?.photoURL || '');
-  }, [member?.photoURL]);
 
   const handleCopyFundAccount = () => {
     navigator.clipboard.writeText('96766876');
@@ -71,18 +79,29 @@ export const MemberPage: React.FC = () => {
     return null;
   }
 
+  const handlePhotoSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setUpdateMessage('Please choose an image file.');
+      event.target.value = '';
+      return;
+    }
+    setNewPhotoFile(file);
+    setPhotoPreview(URL.createObjectURL(file));
+    setUpdateMessage(null);
+  };
+
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
-    const photoURL = photoURLInput.trim();
-    if (photoURL && !/^https:\/\//i.test(photoURL)) {
-      setUpdateMessage('Use a public HTTPS image URL for your profile photo.');
-      return;
-    }
     setIsUpdating(true);
     setUpdateMessage(null);
 
     try {
+      const photoURL = newPhotoFile
+        ? await compressImageToDataUrl(newPhotoFile, 32 * 1024, 320)
+        : (member.photoURL || '');
       const memberDocRef = doc(db, 'members', user.uid);
       await updateDoc(memberDocRef, {
         mobile: editMobile.trim(),
@@ -97,6 +116,8 @@ export const MemberPage: React.FC = () => {
 
       setUpdateMessage('Profile details updated successfully!');
       setIsEditingProfile(false);
+      setNewPhotoFile(null);
+      setPhotoPreview(null);
       setTimeout(() => setUpdateMessage(null), 4000);
     } catch (err) {
       console.error('Update profile error:', err);
@@ -108,34 +129,58 @@ export const MemberPage: React.FC = () => {
 
   const handleSubmitIncident = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!incidentDetails.trim()) return;
+    if (!incidentCategory || !incidentLocation.trim() || !incidentDetails.trim()) {
+      setIncidentError('Choose a report type, enter where it happened, and provide report details.');
+      return;
+    }
+    if (!user) {
+      setIncidentError('Please sign in again before saving this report.');
+      return;
+    }
+    if (!member.memberId) {
+      setIncidentError('Your member ID is not assigned yet. Please contact an administrator; you can still send the report through WhatsApp below.');
+      return;
+    }
 
     setIsSubmittingIncident(true);
+    setIncidentError(null);
     try {
-      if (user) {
-        await addDoc(collection(db, 'incidents'), {
-          memberUid: user.uid,
-          memberId: member.memberId || 'N/A',
-          memberName: member.fullName,
-          memberMobile: member.mobile,
-          subject: incidentSubject.trim() || 'Community Assistance Request',
-          category: incidentCategory,
-          details: incidentDetails.trim(),
-          urgency: incidentUrgency,
-          createdAt: new Date().toISOString(),
-          status: 'pending_case_worker'
-        });
-      }
+      const reportCategory = incidentCategory as IncidentCategory;
+      const urgency = reportCategory === 'death' ? 'critical' : reportCategory === 'injury' ? 'urgent' : 'normal';
+      await addDoc(collection(db, 'incidents'), {
+        memberUid: user.uid,
+        memberId: member.memberId,
+        memberName: member.fullName,
+        memberMobile: member.mobile,
+        subject: INCIDENT_CATEGORY_LABELS[reportCategory],
+        category: reportCategory,
+        details: `Location: ${incidentLocation.trim()}\n\n${incidentDetails.trim()}`,
+        urgency,
+        createdAt: serverTimestamp(),
+        status: 'new',
+      });
       setIncidentSubmitted(true);
-      setIncidentSubject('');
-      setIncidentDetails('');
       setTimeout(() => setIncidentSubmitted(false), 5000);
     } catch (err) {
       console.error('Error logging incident:', err);
+      setIncidentError('Could not save the report. You can still send it directly using WhatsApp below.');
     } finally {
       setIsSubmittingIncident(false);
     }
   };
+
+  const incidentWhatsAppMessage = [
+    'Pakistan Labour Community Oman — Member Report',
+    `Report type: ${incidentCategory ? INCIDENT_CATEGORY_LABELS[incidentCategory] : 'Not selected'}`,
+    `Member: ${member.fullName}`,
+    `Member ID: ${member.memberId || 'N/A'}`,
+    `Contact: ${member.mobile || 'N/A'}`,
+    `Location: ${incidentLocation.trim() || 'Not provided'}`,
+    `Details: ${incidentDetails.trim() || 'Not provided'}`,
+    'Finance / help line: +968 9676 6876',
+    'Fund account: 96766876',
+  ].join('\n');
+  const incidentWhatsAppUrl = `https://wa.me/96896766876?text=${encodeURIComponent(incidentWhatsAppMessage)}`;
 
   return (
     <div className="min-h-screen bg-[#F9F7F2] pb-24">
@@ -453,7 +498,7 @@ export const MemberPage: React.FC = () => {
               <div className="rounded-xl border border-stone-200 p-4">
                 <div className="flex items-center gap-4">
                   <img
-                    src={(isEditingProfile ? photoURLInput : member.photoURL) || 'https://via.placeholder.com/150'}
+                    src={photoPreview || member.photoURL || 'https://via.placeholder.com/150'}
                     alt="Member Photo"
                     className="h-20 w-16 rounded-lg border-2 border-[#E4AE2F] object-cover"
                   />
@@ -463,12 +508,13 @@ export const MemberPage: React.FC = () => {
                   </div>
                 </div>
                 {isEditingProfile && (
-                  <label htmlFor="edit-photo-url" className="mt-3 block text-xs font-bold text-[#071F25]">
-                    Public HTTPS image URL
-                    <input id="edit-photo-url" type="url" value={photoURLInput} onChange={(event) => setPhotoURLInput(event.target.value)} placeholder="https://example.com/member-photo.jpg" className="mt-1 w-full rounded-xl border border-stone-300 px-3 py-2.5 text-xs font-normal" />
-                    <span className="mt-1 block text-[10px] font-normal text-stone-500">Use a direct image link that anyone can view. Phone uploads require Firebase Storage, which is not enabled for this project.</span>
+                  <label htmlFor="edit-photo-file" className="mt-3 inline-flex cursor-pointer items-center gap-2 rounded-lg border border-stone-300 bg-white px-3 py-2 text-xs font-semibold text-stone-700 hover:bg-stone-50">
+                    <Upload className="h-4 w-4" />
+                    {photoPreview ? 'Change Photo' : 'Upload New Photo'}
+                    <input id="edit-photo-file" type="file" accept="image/*" onChange={handlePhotoSelect} className="sr-only" />
                   </label>
                 )}
+                {isEditingProfile && <p className="mt-2 text-[10px] text-stone-500">Photo is compressed to a small membership-card thumbnail and saved with your member record. No Storage plan or billing is needed.</p>}
               </div>
 
               {/* Editable Fields */}
@@ -540,7 +586,8 @@ export const MemberPage: React.FC = () => {
                       setEditLocation(member.currentLocation);
                       setEditEmergencyName(member.emergencyContact?.name || '');
                       setEditEmergencyPhone(member.emergencyContact?.phone || '');
-                      setPhotoURLInput(member.photoURL || '');
+                      setNewPhotoFile(null);
+                      setPhotoPreview(null);
                     }}
                     className="px-4 py-2 text-xs font-semibold text-stone-600 hover:bg-stone-100 rounded-lg"
                   >
@@ -793,102 +840,91 @@ export const MemberPage: React.FC = () => {
           </div>
         )}
 
-        {/* TAB 5: INCIDENT & GRIEVANCE REPORTING */}
+        {/* TAB 5: MEMBER REPORTS */}
         {activeTab === 'incident' && (
           <div className="max-w-2xl mx-auto bg-white rounded-3xl p-6 sm:p-10 shadow-sm border border-stone-200 animate-in fade-in duration-150">
             <h2 className="text-xl font-bold font-heading text-[#071F25] mb-2">
-              Log an Incident or Request Urgent Welfare
+              Member Reports
             </h2>
             <p className="text-xs text-stone-600 mb-6 leading-relaxed">
-              Have an unresolved dispute regarding unpaid wages, workplace safety, medical emergency, or lost documents? Submit a report directly to the community welfare committee.
+              Use this section only for the death of a registered member, an injured member, or a lost or found report. Add where it happened and the details.
             </p>
 
-            {incidentSubmitted ? (
-              <div className="p-6 rounded-2xl bg-emerald-50 border border-emerald-300 text-center space-y-3">
-                <Check className="w-10 h-10 text-emerald-600 mx-auto" />
-                <h3 className="text-base font-bold text-emerald-900">Incident Report Logged</h3>
-                <p className="text-xs text-emerald-800 max-w-sm mx-auto">
-                  Your case has been recorded. A community liaison or welfare officer will review the report and reach out to your registered phone number.
-                </p>
+            <div className="mb-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+              <h3 className="text-xs font-bold text-emerald-950">Community Finance / Help Line</h3>
+              <a href="tel:+96896766876" className="mt-1 inline-block font-mono text-sm font-bold text-emerald-900">+968 9676 6876</a>
+              <p className="mt-1 text-[10px] text-emerald-900">WhatsApp and call support · Fund account: <strong>96766876</strong></p>
+            </div>
+
+            {incidentSubmitted && (
+              <div className="mb-4 flex items-center gap-2 rounded-xl border border-emerald-300 bg-emerald-50 p-3 text-xs font-semibold text-emerald-900">
+                <Check className="h-4 w-4 shrink-0" /> Report saved. You can also send it to the community WhatsApp using the button below.
               </div>
-            ) : (
-              <form onSubmit={handleSubmitIncident} className="space-y-4">
-                <div>
-                  <label htmlFor="inc-subject" className="block text-xs font-bold text-[#071F25] mb-1">
-                    Subject / Summary
-                  </label>
-                  <input
-                    id="inc-subject"
-                    type="text"
-                    required
-                    value={incidentSubject}
-                    onChange={(e) => setIncidentSubject(e.target.value)}
-                    placeholder="e.g. Unpaid wages for 2 months / Medical emergency assistance"
-                    className="w-full px-3 py-2.5 text-xs rounded-xl border border-stone-300 focus:ring-2 focus:ring-[#0D5A31]"
-                  />
-                </div>
+            )}
+            {incidentError && <div role="alert" className="mb-4 rounded-xl border border-rose-300 bg-rose-50 p-3 text-xs font-semibold text-rose-900">{incidentError}</div>}
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label htmlFor="inc-category" className="block text-xs font-bold text-[#071F25] mb-1">
-                      Issue Category
-                    </label>
-                    <select
-                      id="inc-category"
-                      value={incidentCategory}
-                      onChange={(e) => setIncidentCategory(e.target.value)}
-                      className="w-full px-3 py-2.5 text-xs rounded-xl border border-stone-300 bg-white"
-                    >
-                      <option value="wages">Unpaid / Delayed Wages</option>
-                      <option value="medical">Medical or Workplace Injury</option>
-                      <option value="passport">Passport / Residency Card Issue</option>
-                      <option value="housing">Accommodation & Living Conditions</option>
-                      <option value="repatriation">Repatriation / Flight Assistance</option>
-                      <option value="other">Other Welfare Request</option>
-                    </select>
-                  </div>
+            <form onSubmit={handleSubmitIncident} className="space-y-4">
+              <div>
+                <label htmlFor="inc-category" className="block text-xs font-bold text-[#071F25] mb-1">Report type</label>
+                <select
+                  id="inc-category"
+                  required
+                  value={incidentCategory}
+                  onChange={(event) => setIncidentCategory(event.target.value as IncidentCategory | '')}
+                  className="w-full rounded-xl border border-stone-300 bg-white px-3 py-2.5 text-xs"
+                >
+                  <option value="">Choose report type</option>
+                  <option value="death">Death of registered member</option>
+                  <option value="injury">Injured</option>
+                  <option value="lost">Lost</option>
+                  <option value="found">Found</option>
+                </select>
+              </div>
 
-                  <div>
-                    <label htmlFor="inc-urgency" className="block text-xs font-bold text-[#071F25] mb-1">
-                      Urgency Level
-                    </label>
-                    <select
-                      id="inc-urgency"
-                      value={incidentUrgency}
-                      onChange={(e) => setIncidentUrgency(e.target.value)}
-                      className="w-full px-3 py-2.5 text-xs rounded-xl border border-stone-300 bg-white"
-                    >
-                      <option value="normal">Standard (Review within 48h)</option>
-                      <option value="urgent">Urgent (Within 24h)</option>
-                      <option value="critical">Critical / Emergency</option>
-                    </select>
-                  </div>
-                </div>
+              <div>
+                <label htmlFor="inc-location" className="block text-xs font-bold text-[#071F25] mb-1">Location where it happened / item or person was lost or found</label>
+                <input
+                  id="inc-location"
+                  required
+                  value={incidentLocation}
+                  onChange={(event) => setIncidentLocation(event.target.value)}
+                  placeholder="City, wilayat, and specific location"
+                  className="w-full rounded-xl border border-stone-300 px-3 py-2.5 text-xs"
+                />
+              </div>
 
-                <div>
-                  <label htmlFor="inc-details" className="block text-xs font-bold text-[#071F25] mb-1">
-                    Detailed Description
-                  </label>
-                  <textarea
-                    id="inc-details"
-                    rows={4}
-                    required
-                    value={incidentDetails}
-                    onChange={(e) => setIncidentDetails(e.target.value)}
-                    placeholder="Provide employer name, location, dates, and what assistance is urgently needed..."
-                    className="w-full p-3 text-xs rounded-xl border border-stone-300 focus:ring-2 focus:ring-[#0D5A31]"
-                  />
-                </div>
+              <div>
+                <label htmlFor="inc-details" className="block text-xs font-bold text-[#071F25] mb-1">Report details</label>
+                <textarea
+                  id="inc-details"
+                  rows={4}
+                  required
+                  value={incidentDetails}
+                  onChange={(event) => setIncidentDetails(event.target.value)}
+                  placeholder="Describe what happened and who needs help. Do not include passwords or private account details."
+                  className="w-full rounded-xl border border-stone-300 p-3 text-xs focus:ring-2 focus:ring-[#0D5A31]"
+                />
+              </div>
 
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <a
+                  href={incidentWhatsAppUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-700 px-4 py-3 text-center text-xs font-bold text-white hover:bg-emerald-800"
+                >
+                  <ExternalLink className="h-4 w-4" /> Send report via WhatsApp
+                </a>
                 <button
                   type="submit"
                   disabled={isSubmittingIncident}
-                  className="w-full py-3 rounded-xl font-bold text-xs bg-[#071F25] text-white hover:bg-[#0e3742] transition-colors disabled:opacity-50"
+                  className="w-full rounded-xl bg-[#071F25] px-4 py-3 text-xs font-bold text-white transition-colors hover:bg-[#0e3742] disabled:opacity-50"
                 >
-                  {isSubmittingIncident ? 'Submitting Case...' : 'Submit Incident to Welfare Committee'}
+                  {isSubmittingIncident ? 'Saving report...' : 'Save report to community'}
                 </button>
-              </form>
-            )}
+              </div>
+              <p className="text-center text-[10px] text-stone-500">WhatsApp opens with your report filled in. Review it and tap Send in WhatsApp. You can also save the report here for the community record.</p>
+            </form>
           </div>
         )}
 

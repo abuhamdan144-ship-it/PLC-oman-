@@ -1,6 +1,5 @@
 /**
- * Client-side image compressor to ensure profile photos stay well under 500 KB
- * before uploading to Firebase Storage.
+ * Client-side image compressor for smaller profile and receipt images.
  */
 export async function compressImage(file: File, maxSizeBytes = 450 * 1024, maxDimension = 900): Promise<Blob> {
   return new Promise((resolve, reject) => {
@@ -73,5 +72,27 @@ export async function compressImage(file: File, maxSizeBytes = 450 * 1024, maxDi
     };
 
     reader.onerror = (err) => reject(err);
+  });
+}
+
+/** Compress a small profile thumbnail and return it as a data URL for Firestore. */
+export async function compressImageToDataUrl(
+  file: File,
+  maxSizeBytes = 32 * 1024,
+  maxDimension = 320,
+): Promise<string> {
+  const compressed = await compressImage(file, maxSizeBytes, maxDimension);
+  if (compressed.size > maxSizeBytes) {
+    throw new Error('Could not compress this photo small enough. Please choose a smaller image.');
+  }
+
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') resolve(reader.result);
+      else reject(new Error('Could not read the compressed photo. Please try another image.'));
+    };
+    reader.onerror = () => reject(reader.error || new Error('Could not read the compressed photo.'));
+    reader.readAsDataURL(compressed);
   });
 }
