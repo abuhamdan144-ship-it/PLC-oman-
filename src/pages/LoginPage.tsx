@@ -19,7 +19,6 @@ import {
   X,
   ShieldCheck,
   User,
-  Zap,
   Check
 } from 'lucide-react';
 
@@ -380,49 +379,6 @@ export const LoginPage: React.FC = () => {
                     )}
                   </button>
                 </form>
-
-                {/* 1-Click Quick Access Shortcuts */}
-                <div className="pt-2 space-y-2">
-                  <button
-                    type="button"
-                    onClick={() => executeAdminLogin('PLC@community.com', '11223344')}
-                    disabled={isLoading}
-                    className="w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-amber-100 hover:bg-amber-200 text-amber-950 font-bold text-xs border border-amber-300 transition-all shadow-xs"
-                  >
-                    <Zap className="w-3.5 h-3.5 text-[#0D5A31] fill-amber-500" />
-                    <span>⚡ 1-Click Login as Admin (PLC@community.com)</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => executeAdminLogin('Hiapp144@gmail.com', '11223344')}
-                    disabled={isLoading}
-                    className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-950 font-bold text-xs border border-emerald-300 transition-all shadow-xs"
-                  >
-                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-700" />
-                    <span>⚡ Authorize & Enter with (Hiapp144@gmail.com)</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => executeAdminLogin('abuhamdan144@gmail.com', '11223344')}
-                    disabled={isLoading}
-                    className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-950 font-bold text-xs border border-sky-300 transition-all shadow-xs"
-                  >
-                    <ShieldCheck className="w-3.5 h-3.5 text-sky-700" />
-                    <span>⚡ Authorize & Enter with (abuhamdan144@gmail.com)</span>
-                  </button>
-                </div>
-
-                {/* Credentials reminder badge */}
-                <div className="text-center pt-2 border-t border-stone-100 space-y-1">
-                  <p className="text-[11px] text-stone-500">
-                    Admin: <code className="bg-stone-100 px-1 py-0.5 rounded font-mono font-semibold text-[#071F25]">Hiapp144@gmail.com</code> / <code className="bg-stone-100 px-1 py-0.5 rounded font-mono font-semibold text-[#071F25]">abuhamdan144@gmail.com</code> / <code className="bg-stone-100 px-1 py-0.5 rounded font-mono font-semibold text-[#071F25]">PLC@community.com</code>
-                  </p>
-                  <p className="text-[11px] text-stone-500">
-                    Password: <code className="bg-stone-100 px-1 py-0.5 rounded font-mono font-semibold text-[#071F25]">11223344</code>
-                  </p>
-                </div>
 
               </div>
             )}
