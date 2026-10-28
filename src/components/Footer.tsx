@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
 import { PakistanLabourCommunityLogo } from '../lib/logo';
 import { FlagPair } from '../lib/flags';
 import { ShieldCheck, Phone, MapPin, HeartHandshake, FileText } from 'lucide-react';
@@ -105,13 +104,6 @@ export const Footer: React.FC = () => {
             >
               Terms & Welfare Charter (شرائط)
             </button>
-            <span>•</span>
-            <Link 
-              to="/admin/login" 
-              className="text-amber-400/90 hover:text-amber-300 font-semibold underline underline-offset-4 transition-colors"
-            >
-              Admin Registry Desk
-            </Link>
             <span>•</span>
             <span>Muscat, Oman</span>
             <span>•</span>

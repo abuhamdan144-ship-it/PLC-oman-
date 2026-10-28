@@ -409,6 +409,14 @@ export const AdminRegistrationsPage: React.FC = () => {
     }
 
     return true;
+  }).sort((a, b) => {
+    const priority = (status: MemberStatus) => {
+      if (status === 'pending') return 0;
+      if (status === 'info_requested') return 1;
+      if (status === 'approved') return 2;
+      return 3;
+    };
+    return priority(a.status) - priority(b.status);
   });
 
   const counts = {
@@ -554,7 +562,7 @@ export const AdminRegistrationsPage: React.FC = () => {
                   : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
               }`}
             >
-              <span>Pending Review</span>
+              <span>Pending Members</span>
               <span className="px-2 py-0.5 rounded-full bg-amber-400 text-[#071F25] text-[11px] font-extrabold">
                 {counts.pending}
               </span>
@@ -642,6 +650,16 @@ export const AdminRegistrationsPage: React.FC = () => {
           </div>
 
         </div>
+
+        {statusFilter === 'pending' && !loading && (
+          <div className="mb-4 flex items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+            <div>
+              <h2 className="text-sm font-bold text-[#071F25]">Pending Members — Review Queue</h2>
+              <p className="mt-0.5 text-[11px] text-stone-600">Approve or decline applications here; pending applicants are shown first in All Registrations.</p>
+            </div>
+            <span className="shrink-0 rounded-full bg-amber-200 px-3 py-1 text-xs font-extrabold text-amber-950">{counts.pending} pending</span>
+          </div>
+        )}
 
         {/* CONTENT AREA: CARDS OR TABLE */}
         {loading ? (
@@ -857,6 +875,25 @@ export const AdminRegistrationsPage: React.FC = () => {
                       </button>
                     </div>
 
+                    <div className="flex items-center gap-2 border-t border-stone-100 pt-2">
+                      {isApproved && (
+                        <button
+                          type="button"
+                          onClick={() => setCardMember(m)}
+                          className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] font-bold text-emerald-900 hover:bg-emerald-100"
+                        >
+                          <CreditCard className="h-3.5 w-3.5" /> Card / PDF
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteMember(m)}
+                        className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-rose-200 px-3 py-2 text-[11px] font-bold text-rose-700 hover:bg-rose-50"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" /> Delete
+                      </button>
+                    </div>
+
                   </div>
                 </div>
               );
@@ -1026,6 +1063,28 @@ export const AdminRegistrationsPage: React.FC = () => {
                               aria-label={`View dossier of ${m.fullName}`}
                             >
                               <Eye className="w-4 h-4" />
+                            </button>
+
+                            {isApproved && (
+                              <button
+                                type="button"
+                                onClick={() => setCardMember(m)}
+                                className="p-1.5 text-emerald-700 hover:text-emerald-900 hover:bg-emerald-50 rounded-xl transition-colors"
+                                title="Open or download membership card"
+                                aria-label={`Open membership card for ${m.fullName}`}
+                              >
+                                <CreditCard className="w-4 h-4" />
+                              </button>
+                            )}
+
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteMember(m)}
+                              className="p-1.5 text-rose-600 hover:text-rose-800 hover:bg-rose-50 rounded-xl transition-colors"
+                              title="Delete member record"
+                              aria-label={`Delete ${m.fullName}`}
+                            >
+                              <Trash2 className="w-4 h-4" />
                             </button>
 
                           </div>

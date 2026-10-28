@@ -56,7 +56,7 @@ const AdminAccessGate: React.FC<{ user: { uid: string; email: string | null }; m
 
   const handleSwitchToAdmin = async () => {
     await signOut();
-    window.location.href = '/login?role=admin';
+    window.location.href = '/admin/login';
   };
 
   return (
@@ -152,7 +152,7 @@ export const ProtectedAdminRoute: React.FC<{ children: React.ReactNode }> = ({ c
   }
 
   if (!user) {
-    return <Navigate to="/login?role=admin" state={{ from: location }} replace />;
+    return <Navigate to="/admin/login" state={{ from: location }} replace />;
   }
 
   return <AdminAccessGate user={user} member={member} />;

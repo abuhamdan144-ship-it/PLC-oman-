@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { 
   signInWithEmailAndPassword, 
@@ -21,7 +21,6 @@ import {
   KeyRound, 
   X,
   ShieldCheck,
-  User,
   Check
 } from 'lucide-react';
 
@@ -29,11 +28,8 @@ export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Check URL params: if '?role=admin' or '?admin=true', start on Admin tab
-  const params = new URLSearchParams(location.search);
-  const initialIsAdminTab = params.get('role') === 'admin' || params.get('admin') === 'true';
-
-  const [activeTab, setActiveTab] = useState<'admin' | 'member'>(initialIsAdminTab ? 'admin' : 'member');
+  // Keep the member and administrator sign-in routes separate.
+  const isAdminLogin = location.pathname === '/admin/login';
 
   // Form inputs for Member
   const [memberEmail, setMemberEmail] = useState('');
@@ -53,13 +49,6 @@ export const LoginPage: React.FC = () => {
   const [resetLoading, setResetLoading] = useState(false);
   const [resetSuccess, setResetSuccess] = useState(false);
   const [resetError, setResetError] = useState<string | null>(null);
-
-  // Switch tab if URL parameter changes
-  useEffect(() => {
-    if (params.get('role') === 'admin' || params.get('admin') === 'true') {
-      setActiveTab('admin');
-    }
-  }, [location.search]);
 
   /**
    * Helper to execute guaranteed Admin Login:
@@ -288,49 +277,17 @@ export const LoginPage: React.FC = () => {
             Pakistan Labour Community
           </h1>
           <p className="mt-1 text-xs sm:text-sm text-stone-600">
-            Sign in to access your digital membership card or community management desk.
+            {isAdminLogin ? 'Administrator sign-in' : 'Sign in to your member account and access your community services.'}
           </p>
         </div>
 
         {/* Login Card */}
         <div className="bg-white rounded-3xl shadow-xl border border-stone-200/90 overflow-hidden">
           
-          {/* Segmented Tab Switcher: Admin vs Member */}
-          <div className="flex border-b border-stone-200 bg-stone-50/80 p-1.5 gap-1.5">
-            <button
-              type="button"
-              onClick={() => {
-                setActiveTab('admin');
-                setErrorMessage(null);
-              }}
-              className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-2xl text-xs sm:text-sm font-bold transition-all ${
-                activeTab === 'admin'
-                  ? 'bg-[#071F25] text-white shadow-sm'
-                  : 'text-stone-600 hover:text-[#071F25] hover:bg-white/60'
-              }`}
-            >
-              <ShieldCheck className={`w-4 h-4 ${activeTab === 'admin' ? 'text-amber-400' : 'text-stone-400'}`} />
-              <span>Admin Login</span>
-              <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-amber-400/20 text-amber-300 font-extrabold hidden sm:inline">
-                PLC
-              </span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                setActiveTab('member');
-                setErrorMessage(null);
-              }}
-              className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-2xl text-xs sm:text-sm font-bold transition-all ${
-                activeTab === 'member'
-                  ? 'bg-[#0D5A31] text-white shadow-sm'
-                  : 'text-stone-600 hover:text-[#071F25] hover:bg-white/60'
-              }`}
-            >
-              <User className={`w-4 h-4 ${activeTab === 'member' ? 'text-emerald-200' : 'text-stone-400'}`} />
-              <span>Member Sign In</span>
-            </button>
+          <div className="border-b border-stone-200 bg-stone-50/80 px-6 py-4">
+            <p className="text-center text-sm font-bold text-[#071F25]">
+              {isAdminLogin ? 'Administrator Sign In' : 'Member Sign In'}
+            </p>
           </div>
 
           <div className="p-6 sm:p-8">
@@ -348,8 +305,7 @@ export const LoginPage: React.FC = () => {
               </div>
             )}
 
-            {/* TAB 1: ADMIN LOGIN (SUPER SIMPLE) */}
-            {activeTab === 'admin' && (
+            {isAdminLogin && (
               <div className="space-y-4">
                 
                 {/* Admin Header Notice */}
@@ -420,11 +376,17 @@ export const LoginPage: React.FC = () => {
                   </button>
                 </form>
 
+                <p className="pt-2 text-center text-xs text-stone-600">
+                  Member?{' '}
+                  <Link to="/login" className="font-bold text-[#0D5A31] underline underline-offset-2">
+                    Member Sign In
+                  </Link>
+                </p>
+
               </div>
             )}
 
-            {/* TAB 2: MEMBER LOGIN */}
-            {activeTab === 'member' && (
+            {!isAdminLogin && (
               <form onSubmit={handleMemberSubmit} className="space-y-4">
                 
                 <div>

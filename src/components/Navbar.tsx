@@ -12,9 +12,7 @@ import {
   Clock, 
   Menu, 
   X,
-  CreditCard,
-  PhoneCall,
-  FileText
+  CreditCard
 } from 'lucide-react';
 
 export const Navbar: React.FC = () => {
@@ -83,7 +81,7 @@ export const Navbar: React.FC = () => {
             
             {/* Left: Official Logo + Title + Flag Pair */}
             <Link 
-              to={user ? (isApproved ? '/member' : '/pending-approval') : '/register'} 
+              to={user ? (isApproved ? '/member' : '/pending-approval') : '/login'}
               className="flex items-center gap-3 group focus:outline-hidden focus:ring-2 focus:ring-amber-400 rounded-lg p-1 transition-transform"
               aria-label="Pakistan Labour Community Home"
             >
@@ -110,21 +108,6 @@ export const Navbar: React.FC = () => {
                 <>
                   {/* Status Badge */}
                   {getStatusBadge()}
-
-                  {/* Admin registrations shortcut if admin */}
-                  {isAdmin && (
-                    <Link
-                      to="/admin/registrations"
-                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
-                        location.pathname.startsWith('/admin')
-                          ? 'bg-amber-400 text-[#071F25] shadow-xs'
-                          : 'bg-emerald-950/80 hover:bg-emerald-900 text-amber-300 border border-amber-500/30'
-                      }`}
-                    >
-                      <ShieldCheck className="w-4 h-4 text-amber-400" />
-                      Admin Dashboard (Approve Members)
-                    </Link>
-                  )}
 
                   {/* Approved member direct links */}
                   {isApproved && (
@@ -237,12 +220,6 @@ export const Navbar: React.FC = () => {
               ) : (
                 <div className="flex items-center gap-2.5">
                   <Link
-                    to="/admin/login"
-                    className="text-xs font-semibold text-amber-300 hover:text-white px-2.5 py-1.5 rounded-lg border border-amber-400/30 hover:bg-white/10 transition-colors"
-                  >
-                    Admin Portal
-                  </Link>
-                  <Link
                     to="/login"
                     className="text-xs font-semibold text-stone-200 hover:text-white px-3 py-2 rounded-lg transition-colors"
                   >
@@ -330,7 +307,7 @@ export const Navbar: React.FC = () => {
                     className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-amber-300 hover:bg-white/10 font-bold"
                   >
                     <ShieldCheck className="w-4 h-4 text-amber-400" />
-                    Admin Dashboard (Approve Members)
+                    {isAdmin ? 'Admin Dashboard' : 'Admin Login'}
                   </Link>
 
                 <button
@@ -348,7 +325,7 @@ export const Navbar: React.FC = () => {
                   onClick={() => setShowMobileMenu(false)}
                   className="text-center py-2.5 px-4 rounded-lg text-sm font-bold border border-amber-400/40 text-amber-300 hover:bg-white/5"
                 >
-                  Admin Registry Portal
+                  Admin Login
                 </Link>
                 <Link
                   to="/login"
@@ -378,41 +355,6 @@ export const Navbar: React.FC = () => {
         onMarkAsRead={markNotificationAsRead}
       />
 
-      {/* Mobile Sticky Bottom Navigation (only when approved member is browsing on mobile) */}
-      {user && isApproved && (
-        <div className="fixed bottom-0 left-0 right-0 z-30 bg-[#071F25] text-stone-300 border-t border-amber-500/20 md:hidden py-1 px-4 flex justify-around items-center text-[10px] shadow-lg">
-          <Link
-            to="/member"
-            className={`flex flex-col items-center py-1 px-2 rounded-md ${
-              location.pathname === '/member' ? 'text-amber-400 font-bold' : 'text-stone-400'
-            }`}
-          >
-            <CreditCard className="w-4 h-4 mb-0.5" />
-            <span>Card</span>
-          </Link>
-          <a
-            href="#details"
-            className="flex flex-col items-center py-1 px-2 rounded-md text-stone-400 hover:text-white"
-          >
-            <UserIcon className="w-4 h-4 mb-0.5" />
-            <span>Profile</span>
-          </a>
-          <a
-            href="#helpline"
-            className="flex flex-col items-center py-1 px-2 rounded-md text-stone-400 hover:text-white"
-          >
-            <PhoneCall className="w-4 h-4 mb-0.5" />
-            <span>Support</span>
-          </a>
-          <a
-            href="#rules"
-            className="flex flex-col items-center py-1 px-2 rounded-md text-stone-400 hover:text-white"
-          >
-            <FileText className="w-4 h-4 mb-0.5" />
-            <span>Rights</span>
-          </a>
-        </div>
-      )}
     </>
   );
 };
