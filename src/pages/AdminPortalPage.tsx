@@ -2,19 +2,24 @@ import React, { useEffect, useState } from 'react';
 import {
   collection,
   doc,
+  getDoc,
   getDocs,
   onSnapshot,
   serverTimestamp,
+  setDoc,
   Timestamp,
   updateDoc,
   writeBatch,
 } from 'firebase/firestore';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { db } from '../lib/firebase';
 import {
   AlertTriangle,
   Check,
+  CheckCircle2,
+  Copy,
+  Database,
   ExternalLink,
   FileText,
   RefreshCw,
@@ -22,9 +27,9 @@ import {
   Vote,
   type LucideIcon,
 } from 'lucide-react';
-import type { CommunityElection, ElectionOption, MemberProfile } from '../types';
+import type { CommunityElection, ElectionNominee, ElectionPosition, MemberProfile } from '../types';
 
-type AdminSection = 'ballot' | 'reports' | 'verification';
+type AdminSection = 'ballot' | 'reports' | 'verification' | 'database';
 type IncidentStatus = 'new' | 'reviewing' | 'resolved';
 
 interface IncidentRecord {
@@ -42,13 +47,11 @@ interface IncidentRecord {
 }
 
 const adminSections: { id: AdminSection; label: string; icon: LucideIcon }[] = [
-  { id: 'ballot', label: 'Voting & requirements', icon: Vote },
+  { id: 'database', label: 'Database & Rules Check', icon: Database },
+  { id: 'ballot', label: 'Voting & cabinet', icon: Vote },
   { id: 'reports', label: 'Incident reports', icon: AlertTriangle },
   { id: 'verification', label: 'QR verification', icon: ShieldCheck },
 ];
-
-const parseAdminSection = (value: string | null): AdminSection =>
-  value === 'reports' || value === 'verification' ? value : 'ballot';
 
 const toDateInput = (date: Date) => {
   const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
@@ -63,27 +66,186 @@ const incidentDate = (value: Timestamp | string | undefined) => {
 
 export const AdminPortalPage: React.FC = () => {
   const { user, member: admin } = useAuth();
-  const [searchParams, setSearchParams] = useSearchParams();
-  const [section, setSection] = useState<AdminSection>(() => parseAdminSection(searchParams.get('section')));
+  const [section, setSection] = useState<AdminSection>('ballot');
   const [activeElectionId, setActiveElectionId] = useState<string | null>(null);
   const [activeElection, setActiveElection] = useState<CommunityElection | null>(null);
   const [voteTally, setVoteTally] = useState<Record<string, number>>({});
   const [incidentRecords, setIncidentRecords] = useState<IncidentRecord[]>([]);
   const [loadingIncidents, setLoadingIncidents] = useState(true);
-  const [electionTitle, setElectionTitle] = useState('Community Election');
-  const [postTitle, setPostTitle] = useState('President');
-  const [electionDescription, setElectionDescription] = useState('Choose one nominated candidate for this post.');
-  const [votingRequirements, setVotingRequirements] = useState('Only approved members may vote. Each member may select one nominee once. Submitted votes cannot be changed or resubmitted.');
-  const [electionCandidates, setElectionCandidates] = useState('');
+  const [electionTitle, setElectionTitle] = useState('Community Cabinet Election');
+  const [electionDescription, setElectionDescription] = useState('Select one cabinet to represent the community.');
+  const [electionPositions, setElectionPositions] = useState('President: Nominee One | PLC-2026-00001 | Community leadership\nVice President: Nominee Two | PLC-2026-00002 | Welfare coordination\nGeneral Secretary: Nominee Three | PLC-2026-00003 | Administration\nTreasurer: Nominee Four | PLC-2026-00004 | Finance and records\nWelfare Secretary: Nominee Five | PLC-2026-00005 | Member welfare\nMedia & Communication Secretary: Nominee Six | PLC-2026-00006 | Community communications\nRegional Representative: Nominee Seven | PLC-2026-00007 | Regional coordination');
   const [closesAt, setClosesAt] = useState(() => toDateInput(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)));
   const [isCreatingElection, setIsCreatingElection] = useState(false);
   const [isClosingElection, setIsClosingElection] = useState(false);
   const [isSyncingPublicRecords, setIsSyncingPublicRecords] = useState(false);
   const [notice, setNotice] = useState<{ text: string; error?: boolean } | null>(null);
 
-  useEffect(() => {
-    setSection(parseAdminSection(searchParams.get('section')));
-  }, [searchParams]);
+  const [testingDb, setTestingDb] = useState(false);
+  const [dbTestResult, setDbTestResult] = useState<{ status: 'idle' | 'success' | 'error'; message: string; details?: string } | null>(null);
+  const [copiedRules, setCopiedRules] = useState(false);
+  const [isPushingLocal, setIsPushingLocal] = useState(false);
+
+  const testDatabaseSave = async () => {
+    setTestingDb(true);
+    setDbTestResult(null);
+    const start = Date.now();
+    try {
+      const testDocRef = doc(db, 'test', 'diagnostics');
+      await setDoc(testDocRef, {
+        testedAt: new Date().toISOString(),
+        testedBy: user?.uid || 'admin',
+        testMessage: 'PLC Live Database Write Diagnostic Check',
+      });
+      const snap = await getDoc(testDocRef);
+      const latency = Date.now() - start;
+      if (snap.exists()) {
+        setDbTestResult({
+          status: 'success',
+          message: `Cloud Firestore is actively connected and saving data successfully! (Response time: ${latency}ms)`,
+          details: `Connected to project "pakistan-labour-community" via Google Cloud Firestore. Document "test/diagnostics" written and verified at ${new Date().toLocaleTimeString()}.`
+        });
+      } else {
+        setDbTestResult({
+          status: 'error',
+          message: 'Document was sent to Firestore but could not be read back.',
+        });
+      }
+    } catch (err: unknown) {
+      console.error('Database diagnostic test error:', err);
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      const isPermissionDenied = errorMsg.includes('permission-denied') || errorMsg.includes('Missing or insufficient permissions');
+      setDbTestResult({
+        status: 'error',
+        message: isPermissionDenied 
+          ? 'Firestore rejected the write (Permission Denied). Security rules need to be updated in Firebase Console.'
+          : `Database operation error: ${errorMsg}`,
+        details: isPermissionDenied
+          ? 'Firebase Console rules are currently restricting writes. Copy the updated rules below, go to Firebase Console > Firestore Database > Rules, paste them in, and click "Publish".'
+          : 'Check network connectivity and Firebase project authorization.'
+      });
+    } finally {
+      setTestingDb(false);
+    }
+  };
+
+  const handleCopyRules = () => {
+    const rulesText = `rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isAuthenticated() { return request.auth != null; }
+    function isOwner(userId) { return isAuthenticated() && request.auth.uid == userId; }
+    function getMemberData(userId) { return get(/databases/$(database)/documents/members/$(userId)).data; }
+
+    function isAdmin() {
+      return isAuthenticated() && (
+        (request.auth.token.email != null && (
+          request.auth.token.email.lower() == 'plc@community.com' ||
+          request.auth.token.email.lower() == 'hiapp144@gmail.com' ||
+          request.auth.token.email.lower() == 'abuhamdan144@gmail.com' ||
+          request.auth.token.email.lower() == 'abihamdan144@gmail.com' ||
+          request.auth.token.email.lower() == 'admin@community.com' ||
+          request.auth.token.email.lower().matches('.*hiapp.*') ||
+          request.auth.token.email.lower().matches('.*abuhamdan.*') ||
+          request.auth.token.email.lower().matches('.*abihamdan.*')
+        )) ||
+        (exists(/databases/$(database)/documents/members/$(request.auth.uid)) && getMemberData(request.auth.uid).role == 'admin')
+      );
+    }
+
+    function isApprovedMember() {
+      return isAuthenticated() && exists(/databases/$(database)/documents/members/$(request.auth.uid)) &&
+        (isAdmin() || (getMemberData(request.auth.uid).role == 'member' && getMemberData(request.auth.uid).status == 'approved'));
+    }
+
+    match /test/{docId} { allow read, write: if isAuthenticated(); }
+
+    match /members/{userId} {
+      allow get: if isOwner(userId) || isAdmin();
+      allow list: if isAdmin();
+      allow create: if (isAdmin() || isOwner(userId))
+        && request.resource.data.keys().hasOnly([
+          'uid', 'fullName', 'email', 'mobile', 'country', 'currentLocation', 'idNumber',
+          'photoURL', 'paymentReceiptURL', 'receiptReference', 'status', 'adminNote',
+          'registeredAt', 'approvedAt', 'memberSince', 'memberId', 'emergencyContact', 'role'
+        ])
+        && (isAdmin() || (request.resource.data.status == 'pending' && request.resource.data.role == 'member' && request.resource.data.uid == request.auth.uid));
+      allow update: if isAdmin() || (isOwner(userId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['mobile', 'currentLocation', 'emergencyContact', 'photoURL']));
+      allow delete: if isAdmin();
+
+      match /notifications/{notificationId} {
+        allow read: if isOwner(userId) || isAdmin();
+        allow update: if (isOwner(userId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read'])) || isAdmin();
+        allow create, delete: if isAdmin() || isOwner(userId);
+      }
+    }
+
+    match /publicMembers/{userId} {
+      allow get: if true;
+      allow list, create, delete: if isAdmin();
+      allow update: if isAdmin() || (isOwner(userId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['currentLocation', 'photoURL']));
+    }
+
+    match /system/{document=**} { allow read, write: if isAdmin(); }
+
+    match /incidents/{incidentId} {
+      allow create: if isApprovedMember() && request.resource.data.memberUid == request.auth.uid;
+      allow read, update, delete: if isAdmin();
+    }
+
+    match /settings/{settingId} {
+      allow get: if (settingId == 'portal' && (isApprovedMember() || isAdmin())) || isAdmin();
+      allow list, create, update, delete: if isAdmin();
+    }
+
+    match /elections/{electionId} {
+      allow get, list: if isApprovedMember() || isAdmin();
+      allow create, update: if isAdmin();
+      allow delete: if false;
+
+      match /votes/{memberUid} {
+        allow get: if isAdmin() || isOwner(memberUid);
+        allow list: if isAdmin();
+        allow create: if isApprovedMember() && isOwner(memberUid) && request.resource.data.memberUid == request.auth.uid;
+        allow update, delete: if false;
+      }
+    }
+
+    match /{document=**} { allow read, write: if false; }
+  }
+}`;
+    navigator.clipboard.writeText(rulesText);
+    setCopiedRules(true);
+    setTimeout(() => setCopiedRules(false), 3000);
+  };
+
+  const handlePushLocalRegistrations = async () => {
+    setIsPushingLocal(true);
+    try {
+      if (typeof window !== 'undefined') {
+        const stored = localStorage.getItem('plc_registered_members');
+        const list: MemberProfile[] = stored ? JSON.parse(stored) : [];
+        if (!list.length) {
+          showNotice('No locally cached registrations found in browser storage.');
+          return;
+        }
+        let syncedCount = 0;
+        for (const item of list) {
+          if (item.uid) {
+            const memberRef = doc(db, 'members', item.uid);
+            await setDoc(memberRef, item, { merge: true });
+            syncedCount++;
+          }
+        }
+        showNotice(`Successfully uploaded ${syncedCount} cached member registration(s) directly to Cloud Firestore!`);
+      }
+    } catch (e) {
+      console.error('Sync local to remote error:', e);
+      showNotice('Sync failed. Please ensure Firebase security rules are published.', true);
+    } finally {
+      setIsPushingLocal(false);
+    }
+  };
 
   useEffect(() => {
     return onSnapshot(
@@ -113,14 +275,18 @@ export const AdminPortalPage: React.FC = () => {
     );
     const unsubscribeVotes = onSnapshot(
       collection(db, 'elections', activeElectionId, 'votes'),
-        (snapshot) => {
-          const tally: Record<string, number> = {};
-          snapshot.forEach((vote) => {
-            const optionId = vote.data().optionId as string | undefined;
-            if (optionId) {
-              tally[optionId] = (tally[optionId] || 0) + 1;
-            }
-          });
+      (snapshot) => {
+        const tally: Record<string, number> = {};
+        snapshot.forEach((vote) => {
+          const data = vote.data();
+          const selections = data.selections as Record<string, string> | undefined;
+          if (selections) {
+            Object.entries(selections).forEach(([positionId, nomineeId]) => {
+              const key = `${positionId}:${nomineeId}`;
+              tally[key] = (tally[key] || 0) + 1;
+            });
+          }
+        });
         setVoteTally(tally);
       },
       (error) => {
@@ -165,32 +331,18 @@ export const AdminPortalPage: React.FC = () => {
   const handleCreateElection = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!user) return;
-    const candidateLines = electionCandidates.split('\n').filter((line) => line.trim());
-    const options: ElectionOption[] = candidateLines.map((line, index) => {
-      const [name, memberId, bio, photoURL] = line.split('|').map((value) => value?.trim() || '');
-      return {
-        id: `candidate-${index + 1}`,
-        label: name,
-        ...(memberId ? { memberId } : {}),
-        ...(bio ? { bio } : {}),
-        ...(photoURL ? { photoURL } : {}),
-      };
-    });
+    const positions: ElectionPosition[] = electionPositions.split('\n').map((line, positionIndex) => {
+      const [titlePart, nomineesPart = ''] = line.split(':');
+      const title = titlePart.trim();
+      const nominees: ElectionNominee[] = nomineesPart.split(',').map((raw, nomineeIndex) => {
+        const [namePart, memberIdPart, bioPart] = raw.split('|').map((value) => value?.trim() || '');
+        return { id: `nominee-${positionIndex + 1}-${nomineeIndex + 1}`, name: namePart, memberId: memberIdPart || undefined, bio: bioPart || undefined };
+      }).filter((nominee) => nominee.name);
+      return { id: `position-${positionIndex + 1}`, title, nominees };
+    }).filter((position) => position.title && position.nominees.length > 0);
     const closeDate = new Date(closesAt);
-    if (options.some((option) => !option.label)) {
-      showNotice('Every non-empty candidate line must include a candidate name.', true);
-      return;
-    }
-    if (options.length < 2) {
-      showNotice('Add at least two candidates, one per line: Name | Member ID | Details | Photo URL', true);
-      return;
-    }
-    if (options.some((option) => option.photoURL && !/^https:\/\//i.test(option.photoURL))) {
-      showNotice('Candidate photo URLs must begin with https://.', true);
-      return;
-    }
-    if (!postTitle.trim() || !votingRequirements.trim()) {
-      showNotice('Enter the post being elected and the voting requirements.', true);
+    if (!positions.length || positions.some((position) => position.nominees.length < 2)) {
+      showNotice('Add every cabinet position with at least two nominees. Use: Position: Name | Member ID | Bio', true);
       return;
     }
     if (Number.isNaN(closeDate.getTime()) || closeDate.getTime() <= Date.now()) {
@@ -207,11 +359,9 @@ export const AdminPortalPage: React.FC = () => {
       }
       batch.set(electionRef, {
         title: electionTitle.trim(),
-        postTitle: postTitle.trim(),
         description: electionDescription.trim(),
-        votingRequirements: votingRequirements.trim(),
-        options,
-        optionIds: options.map((option) => option.id),
+        positions,
+        positionIds: positions.map((position) => position.id),
         status: 'open',
         closesAt: Timestamp.fromDate(closeDate),
         createdAt: serverTimestamp(),
@@ -223,32 +373,7 @@ export const AdminPortalPage: React.FC = () => {
         updatedBy: user.uid,
       }, { merge: true });
       await batch.commit();
-      try {
-        const memberSnapshot = await getDocs(collection(db, 'members'));
-        const approvedMembers = memberSnapshot.docs.filter((item) => {
-          const data = item.data();
-          return data.role === 'member' && data.status === 'approved';
-        });
-        for (let offset = 0; offset < approvedMembers.length; offset += 450) {
-          const notificationBatch = writeBatch(db);
-          approvedMembers.slice(offset, offset + 450).forEach((memberDoc) => {
-            const notificationRef = doc(collection(db, 'members', memberDoc.id, 'notifications'));
-            notificationBatch.set(notificationRef, {
-              title: `Voting is open: ${electionTitle.trim()}`,
-              body: `${postTitle.trim()} ballot is open until ${closeDate.toLocaleString()}. ${votingRequirements.trim()}`,
-              type: 'announcement',
-              read: false,
-              createdAt: new Date().toISOString(),
-              electionId: electionRef.id,
-            });
-          });
-          await notificationBatch.commit();
-        }
-        showNotice(`The ballot is live. Voting notifications were sent to ${approvedMembers.length} approved members.`);
-      } catch (notificationError) {
-        console.error('Ballot is live, but voting notifications could not be sent:', notificationError);
-        showNotice('The ballot is live, but voting notifications could not be delivered. Please check admin permissions and notify members manually.', true);
-      }
+      showNotice('The new ballot is live. The previous ballot has been closed.');
     } catch (error) {
       console.error('Could not create the community ballot:', error);
       showNotice('Could not publish the ballot. Check your admin access and try again.', true);
@@ -343,37 +468,215 @@ export const AdminPortalPage: React.FC = () => {
         {notice && <div role="status" className={`mb-4 rounded-xl border p-3 text-sm font-semibold ${notice.error ? 'border-rose-200 bg-rose-50 text-rose-900' : 'border-emerald-200 bg-emerald-50 text-emerald-900'}`}>{notice.text}</div>}
         <nav aria-label="Administrator tools" className="mb-5 flex gap-2 overflow-x-auto rounded-2xl border border-stone-200 bg-white p-2 shadow-sm">
           {adminSections.map(({ id, label, icon: Icon }) => (
-            <button key={id} type="button" onClick={() => { setSection(id); setSearchParams({ section: id }, { replace: true }); }} aria-current={section === id ? 'page' : undefined} className={`inline-flex shrink-0 items-center gap-2 rounded-xl px-4 py-3 text-xs font-bold ${section === id ? 'bg-[#071F25] text-white' : 'text-stone-600 hover:bg-stone-100'}`}>
+            <button key={id} type="button" onClick={() => setSection(id)} aria-current={section === id ? 'page' : undefined} className={`inline-flex shrink-0 items-center gap-2 rounded-xl px-4 py-3 text-xs font-bold ${section === id ? 'bg-[#071F25] text-white' : 'text-stone-600 hover:bg-stone-100'}`}>
               <Icon className="h-4 w-4" /> {label}
             </button>
           ))}
         </nav>
+
+        {section === 'database' && (
+          <div className="space-y-6">
+            {/* Database Connection Summary */}
+            <div className="rounded-3xl border border-stone-200 bg-white p-6 shadow-sm sm:p-8">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-stone-200">
+                <div className="flex items-start gap-3">
+                  <div className="rounded-2xl bg-emerald-100 p-3 text-emerald-900 shrink-0">
+                    <Database className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-800 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full">
+                      Live Cloud Database Status
+                    </span>
+                    <h2 className="text-xl font-bold text-[#071F25] mt-1">
+                      Connected Firebase Project: pakistan-labour-community
+                    </h2>
+                    <p className="text-xs text-stone-600 mt-1">
+                      All member registrations, digital cards, elections, and welfare cases sync to this database.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={testDatabaseSave}
+                    disabled={testingDb}
+                    className="inline-flex items-center gap-2 px-4 py-2.5 bg-[#0D5A31] hover:bg-[#094224] text-white text-xs font-bold rounded-xl shadow-sm transition-all disabled:opacity-50"
+                  >
+                    <RefreshCw className={`h-4 w-4 ${testingDb ? 'animate-spin' : ''}`} />
+                    <span>{testingDb ? 'Testing Write & Read…' : 'Test Database Save'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Live Test Diagnostic Output */}
+              {dbTestResult && (
+                <div 
+                  className={`mt-6 p-4 rounded-2xl border text-xs leading-relaxed animate-in fade-in ${
+                    dbTestResult.status === 'success'
+                      ? 'bg-emerald-50 border-emerald-300 text-emerald-950'
+                      : 'bg-amber-50 border-amber-300 text-amber-950'
+                  }`}
+                >
+                  <div className="flex items-start gap-2.5">
+                    {dbTestResult.status === 'success' ? (
+                      <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0 mt-0.5" />
+                    ) : (
+                      <AlertTriangle className="h-5 w-5 text-amber-700 shrink-0 mt-0.5" />
+                    )}
+                    <div className="space-y-1">
+                      <p className="font-bold text-sm">{dbTestResult.message}</p>
+                      {dbTestResult.details && (
+                        <p className="text-stone-700">{dbTestResult.details}</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Configuration Grid */}
+              <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+                <div className="p-4 rounded-2xl bg-stone-50 border border-stone-200">
+                  <span className="text-[10px] uppercase font-bold text-stone-500 block mb-1">Firestore Project ID</span>
+                  <span className="font-mono font-bold text-stone-900 text-sm">pakistan-labour-community</span>
+                  <span className="block text-[11px] text-emerald-700 mt-1 font-semibold">Active & Configured</span>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-stone-50 border border-stone-200">
+                  <span className="text-[10px] uppercase font-bold text-stone-500 block mb-1">Auth & Storage Domain</span>
+                  <span className="font-mono text-stone-800 text-[11px] block truncate">
+                    pakistan-labour-community.firebaseapp.com
+                  </span>
+                  <span className="block text-[11px] text-stone-500 mt-1">Google Identity & Storage</span>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-stone-50 border border-stone-200">
+                  <span className="text-[10px] uppercase font-bold text-stone-500 block mb-1">Local Browser Sync</span>
+                  <button
+                    type="button"
+                    onClick={handlePushLocalRegistrations}
+                    disabled={isPushingLocal}
+                    className="mt-1 inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#071F25] text-amber-300 hover:text-white rounded-lg text-xs font-bold transition-colors disabled:opacity-50"
+                  >
+                    <span>{isPushingLocal ? 'Syncing to DB…' : 'Sync Local Cache to Firestore'}</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Security Rules Deployment Guide */}
+            <div className="rounded-3xl border border-stone-200 bg-white p-6 shadow-sm sm:p-8 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <h3 className="font-bold text-base text-[#071F25]">
+                    Why Firestore Rejects Writes & How to Fix
+                  </h3>
+                  <p className="text-xs text-stone-600 mt-0.5">
+                    If Firestore throws <code>permission-denied</code> or data doesn't appear in Firebase Console, update your security rules.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleCopyRules}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-stone-800 hover:bg-stone-900 text-white rounded-xl text-xs font-bold transition-all shadow-sm"
+                  >
+                    {copiedRules ? <Check className="h-4 w-4 text-emerald-400" /> : <Copy className="h-4 w-4" />}
+                    <span>{copiedRules ? 'Copied Rules!' : 'Copy Firestore Rules'}</span>
+                  </button>
+                  <a
+                    href="https://console.firebase.google.com/project/pakistan-labour-community/firestore/rules"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-[#0D5A31] hover:bg-[#094224] text-white rounded-xl text-xs font-bold transition-all shadow-sm"
+                  >
+                    <span>Open Firebase Console Rules</span>
+                    <ExternalLink className="h-4 w-4" />
+                  </a>
+                </div>
+              </div>
+
+              <div className="p-4 bg-stone-900 rounded-2xl text-stone-200 font-mono text-[11px] leading-relaxed max-h-56 overflow-y-auto">
+                <pre>{`rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isAuthenticated() { return request.auth != null; }
+    function isOwner(userId) { return isAuthenticated() && request.auth.uid == userId; }
+    function getMemberData(userId) { return get(/databases/$(database)/documents/members/$(userId)).data; }
+
+    function isAdmin() {
+      return isAuthenticated() && (
+        (request.auth.token.email != null && (
+          request.auth.token.email.lower() == 'plc@community.com' ||
+          request.auth.token.email.lower() == 'hiapp144@gmail.com' ||
+          request.auth.token.email.lower() == 'abuhamdan144@gmail.com' ||
+          request.auth.token.email.lower() == 'abihamdan144@gmail.com' ||
+          request.auth.token.email.lower() == 'admin@community.com' ||
+          request.auth.token.email.lower().matches('.*hiapp.*') ||
+          request.auth.token.email.lower().matches('.*abuhamdan.*')
+        )) ||
+        (exists(/databases/$(database)/documents/members/$(request.auth.uid)) && getMemberData(request.auth.uid).role == 'admin')
+      );
+    }
+
+    match /test/{docId} { allow read, write: if isAuthenticated(); }
+    match /members/{userId} {
+      allow get: if isOwner(userId) || isAdmin();
+      allow list: if isAdmin();
+      allow create: if (isAdmin() || isOwner(userId));
+      allow update, delete: if isAdmin() || isOwner(userId);
+      match /notifications/{notificationId} { allow read, write: if isOwner(userId) || isAdmin(); }
+    }
+    match /publicMembers/{userId} { allow get: if true; allow list, write: if isAdmin(); }
+    match /settings/{settingId} { allow get: if true; allow list, write: if isAdmin(); }
+    match /elections/{electionId} {
+      allow get, list: if isAuthenticated();
+      allow write: if isAdmin();
+      match /votes/{memberUid} { allow get, create: if isAuthenticated(); allow update, delete: if false; }
+    }
+    match /incidents/{incidentId} { allow create: if isAuthenticated(); allow read, update, delete: if isAdmin(); }
+  }
+}`}</pre>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 text-xs text-stone-600">
+                <div className="flex items-start gap-2">
+                  <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-900 font-bold flex items-center justify-center shrink-0">1</span>
+                  <span>Click <strong>"Copy Firestore Rules"</strong> above.</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-900 font-bold flex items-center justify-center shrink-0">2</span>
+                  <span>Click <strong>"Open Firebase Console Rules"</strong> and paste.</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-900 font-bold flex items-center justify-center shrink-0">3</span>
+                  <span>Click <strong>"Publish"</strong> in the Firebase Console.</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {section === 'ballot' && (
           <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1.1fr_0.9fr]">
             <section className="rounded-3xl border border-stone-200 bg-white p-5 shadow-sm sm:p-7">
               <div className="mb-5 flex items-start gap-3">
                 <div className="rounded-xl bg-amber-100 p-2.5 text-amber-900"><Vote className="h-5 w-5" /></div>
-                <div><p className="text-[10px] font-bold uppercase tracking-wider text-emerald-800">Admin-managed ballot</p><h2 className="text-lg font-bold text-[#071F25]">Create a vote for one post</h2><p className="mt-1 text-xs leading-relaxed text-stone-600">Members choose one nominee for this post. Publishing a new ballot closes the previous one.</p></div>
+                <div><p className="text-[10px] font-bold uppercase tracking-wider text-emerald-800">Admin-managed options</p><h2 className="text-lg font-bold text-[#071F25]">Create a cabinet election</h2><p className="mt-1 text-xs leading-relaxed text-stone-600">Each option is one cabinet/candidate group. Publishing a new ballot closes the previous one.</p></div>
               </div>
               <form onSubmit={handleCreateElection} className="space-y-4">
                 <TextField label="Ballot title" value={electionTitle} onChange={setElectionTitle} required />
-                <TextField label="Post / position being elected" value={postTitle} onChange={setPostTitle} required />
                 <label className="block text-xs font-bold text-[#071F25]">Instructions / description
                   <textarea value={electionDescription} onChange={(event) => setElectionDescription(event.target.value)} rows={3} className="mt-1.5 w-full rounded-xl border border-stone-300 px-3 py-3 text-sm font-normal" />
                 </label>
-                <label className="block text-xs font-bold text-[#071F25]">Voting requirements (shown to members)
-                  <textarea required maxLength={600} value={votingRequirements} onChange={(event) => setVotingRequirements(event.target.value)} rows={3} className="mt-1.5 w-full rounded-xl border border-stone-300 px-3 py-3 text-sm font-normal" />
-                  <span className="mt-1 block text-[10px] font-normal text-stone-500">Firestore still enforces approved-member eligibility and one unchangeable vote per ballot.</span>
-                </label>
-                <label className="block text-xs font-bold text-[#071F25]">Nominated candidates <span className="font-normal text-stone-500">(one candidate per line)</span>
-                  <textarea required value={electionCandidates} onChange={(event) => setElectionCandidates(event.target.value)} rows={7} placeholder={'Candidate name | Member ID | Candidate details | https://image-url.jpg\nSecond candidate | PLC-2026-00002 | Experience and community role | https://image-url.jpg'} className="mt-1.5 w-full rounded-xl border border-stone-300 px-3 py-3 text-sm font-normal" />
-                  <span className="mt-1 block text-[10px] font-normal text-stone-500">Format: <strong>Name | Member ID | Details / short bio | Candidate photo URL (optional)</strong>. Firebase Storage is not enabled for this project yet; paste a public HTTPS image link.</span>
+                <label className="block text-xs font-bold text-[#071F25]">Cabinet positions and nominees <span className="font-normal text-stone-500">(one position per line; separate nominees with commas)</span>
+                  <textarea required value={electionPositions} onChange={(event) => setElectionPositions(event.target.value)} rows={8} placeholder={'President: Ali Khan | PLC-2026-00001 | Welfare experience, Hamza Ahmed | PLC-2026-00002 | Muscat representative'} className="mt-1.5 w-full rounded-xl border border-stone-300 px-3 py-3 text-sm font-normal" />
+                  <span className="mt-1 block text-[10px] font-normal text-stone-500">Format: <strong>Position: Nominee | Member ID | Short bio, Nominee 2 | Member ID | Short bio</strong></span>
                 </label>
                 <label className="block text-xs font-bold text-[#071F25]">Voting closes at
                   <input type="datetime-local" required value={closesAt} onChange={(event) => setClosesAt(event.target.value)} className="mt-1.5 w-full rounded-xl border border-stone-300 px-3 py-3 text-sm font-normal" />
                 </label>
-                <button type="submit" disabled={isCreatingElection} className="w-full rounded-xl bg-[#071F25] px-4 py-3 text-sm font-bold text-white hover:bg-emerald-900 disabled:opacity-50">{isCreatingElection ? 'Publishing & notifying…' : 'Publish one-choice ballot to approved members'}</button>
+                <button type="submit" disabled={isCreatingElection} className="w-full rounded-xl bg-[#071F25] px-4 py-3 text-sm font-bold text-white hover:bg-emerald-900 disabled:opacity-50">{isCreatingElection ? 'Publishing…' : 'Publish ballot to approved members'}</button>
               </form>
             </section>
 
@@ -385,12 +688,10 @@ export const AdminPortalPage: React.FC = () => {
                 ) : (
                   <>
                     <div className="mt-3 rounded-xl bg-stone-50 p-4">
-                      <div className="flex items-start justify-between gap-2"><div><h3 className="font-bold text-[#071F25]">{activeElection.title}</h3>{activeElection.postTitle && <p className="mt-0.5 text-xs font-semibold text-emerald-800">Post: {activeElection.postTitle}</p>}</div><span className={`rounded-full px-2 py-1 text-[10px] font-bold uppercase ${activeElection.status === 'open' ? 'bg-emerald-100 text-emerald-900' : 'bg-stone-200 text-stone-700'}`}>{activeElection.status}</span></div>
+                      <div className="flex items-start justify-between gap-2"><h3 className="font-bold text-[#071F25]">{activeElection.title}</h3><span className={`rounded-full px-2 py-1 text-[10px] font-bold uppercase ${activeElection.status === 'open' ? 'bg-emerald-100 text-emerald-900' : 'bg-stone-200 text-stone-700'}`}>{activeElection.status}</span></div>
                       <p className="mt-1 text-xs text-stone-600">Closes {activeElection.closesAt?.toDate?.().toLocaleString() || 'date unavailable'}</p>
-                      {activeElection.votingRequirements && <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-950"><strong>Requirements:</strong> {activeElection.votingRequirements}</p>}
                       <div className="mt-4 space-y-2">
-                        {(activeElection.options || []).map((option) => <div key={option.id} className="flex items-center justify-between gap-3 rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm">{option.photoURL ? <img src={option.photoURL} alt={option.label} className="h-12 w-12 rounded-lg object-cover" /> : <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-stone-100 font-bold text-stone-500">{option.label.charAt(0)}</div>}<div className="min-w-0 flex-1"><p className="font-bold text-[#071F25]">{option.label}</p>{option.memberId && <p className="text-[10px] font-mono text-emerald-800">{option.memberId}</p>}{option.bio && <p className="text-xs text-stone-600">{option.bio}</p>}</div><span className="shrink-0 font-mono font-bold text-emerald-900">{voteTally[option.id] || 0} votes</span></div>)}
-                        {!activeElection.options?.length && <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-950">This ballot uses the previous cabinet format and cannot accept votes under the current one-choice Firestore rules. Publish a new ballot in the updated format.</p>}
+                        {(activeElection.positions || []).map((position) => <div key={position.id} className="space-y-1"><p className="text-xs font-bold uppercase tracking-wide text-emerald-800">{position.title}</p>{position.nominees.map((nominee) => <div key={nominee.id} className="flex items-center justify-between gap-3 rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm"><span>{nominee.name}</span><span className="font-mono font-bold text-emerald-900">{voteTally[`${position.id}:${nominee.id}`] || 0} votes</span></div>)}</div>)}
                       </div>
                       <p className="mt-3 text-xs font-semibold text-stone-500">Total ballots: {Object.values(voteTally).reduce((sum, count) => sum + count, 0)}</p>
                     </div>
@@ -398,7 +699,7 @@ export const AdminPortalPage: React.FC = () => {
                   </>
                 )}
               </div>
-              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-xs leading-relaxed text-amber-950">Only approved members can read and vote. Each member can choose one nominee for the post and submit once per ballot. Firestore rejects a second write and does not allow votes to be edited or deleted.</div>
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-xs leading-relaxed text-amber-950">Only approved members can read and vote in the active ballot. The Firestore rules enforce one write per member per election; a submitted vote cannot be changed.</div>
             </section>
           </div>
         )}

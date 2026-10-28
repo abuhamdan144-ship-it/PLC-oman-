@@ -1,0 +1,94 @@
+{
+  "entities": {
+    "MemberProfile": {
+      "title": "MemberProfile",
+      "description": "Civic member registry profile containing identity and contact details",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "memberId": { "type": "string" },
+        "fullName": { "type": "string" },
+        "email": { "type": "string" },
+        "mobile": { "type": "string" },
+        "country": { "type": "string" },
+        "currentLocation": { "type": "string" },
+        "idNumber": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "paymentReceiptURL": { "type": "string" },
+        "receiptReference": { "type": "string" },
+        "status": { "type": "string" },
+        "adminNote": { "type": "string" },
+        "registeredAt": { "type": "string" },
+        "approvedAt": { "type": "string" },
+        "memberSince": { "type": "string" },
+        "emergencyContact": { "type": "object" },
+        "role": { "type": "string" }
+      },
+      "required": ["fullName", "email", "mobile", "country", "status", "role"]
+    },
+    "PublicMember": {
+      "title": "PublicMember",
+      "description": "Minimal non-sensitive profile for public QR verification",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "memberId": { "type": "string" },
+        "fullName": { "type": "string" },
+        "country": { "type": "string" },
+        "currentLocation": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "status": { "type": "string" },
+        "memberSince": { "type": "string" }
+      },
+      "required": ["uid", "memberId", "fullName", "status"]
+    },
+    "IncidentRecord": {
+      "title": "IncidentRecord",
+      "description": "Labour welfare or emergency incident report submitted by approved member",
+      "type": "object",
+      "properties": {
+        "memberUid": { "type": "string" },
+        "memberId": { "type": "string" },
+        "memberName": { "type": "string" },
+        "memberMobile": { "type": "string" },
+        "subject": { "type": "string" },
+        "category": { "type": "string" },
+        "details": { "type": "string" },
+        "urgency": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "status": { "type": "string" }
+      },
+      "required": ["memberUid", "subject", "details", "status"]
+    },
+    "VoteRecord": {
+      "title": "VoteRecord",
+      "description": "Confidential election vote submitted by approved member",
+      "type": "object",
+      "properties": {
+        "memberUid": { "type": "string" },
+        "selections": { "type": "object" },
+        "optionId": { "type": "string" },
+        "submittedAt": { "type": "string" }
+      },
+      "required": ["memberUid"]
+    }
+  },
+  "firestore": {
+    "/members/{userId}": {
+      "schema": "MemberProfile",
+      "description": "Private member records, readable by member owner and administrators"
+    },
+    "/publicMembers/{userId}": {
+      "schema": "PublicMember",
+      "description": "Publicly readable membership verification records for QR scans"
+    },
+    "/incidents/{incidentId}": {
+      "schema": "IncidentRecord",
+      "description": "Emergency and welfare case reports for administrator review"
+    },
+    "/elections/{electionId}/votes/{memberUid}": {
+      "schema": "VoteRecord",
+      "description": "Anonymous or protected vote record for an election ballot"
+    }
+  }
+}

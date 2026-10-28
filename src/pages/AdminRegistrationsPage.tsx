@@ -46,7 +46,8 @@ import {
   Receipt,
   MessageCircle,
   Pencil,
-  Trash2
+  Trash2,
+  Database
 } from 'lucide-react';
 
 export const AdminRegistrationsPage: React.FC = () => {
@@ -458,6 +459,15 @@ export const AdminRegistrationsPage: React.FC = () => {
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
+            <Link
+              to="/admin/portal"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2.5 bg-stone-800/90 hover:bg-stone-700 text-stone-200 hover:text-white text-xs font-semibold rounded-xl border border-stone-700/80 shadow-xs transition-colors"
+              title="Inspect live database connection and security rules"
+            >
+              <Database className="w-4 h-4 text-emerald-400" />
+              <span>DB: pakistan-labour-community</span>
+            </Link>
+
             <button
               onClick={() => setShowAddModal(true)}
               className="inline-flex items-center gap-2 px-4 py-2.5 bg-[#0D5A31] hover:bg-[#094224] text-white text-xs font-bold rounded-xl shadow-md transition-all transform hover:-translate-y-0.5"
