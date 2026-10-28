@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { 
   collection, 
   onSnapshot, 
@@ -477,6 +478,12 @@ export const AdminRegistrationsPage: React.FC = () => {
             )}
           </div>
         </div>
+        <nav aria-label="Admin dashboard sections" className="mx-auto mt-5 flex max-w-7xl flex-wrap gap-2 px-0">
+          <Link to="/admin/registrations" aria-current="page" className="rounded-xl bg-white px-3 py-2 text-xs font-bold text-[#071F25]">Member Applications</Link>
+          <Link to="/admin/portal?section=ballot" className="rounded-xl border border-white/20 px-3 py-2 text-xs font-bold text-white hover:bg-white/10">Voting &amp; Requirements</Link>
+          <Link to="/admin/portal?section=reports" className="rounded-xl border border-white/20 px-3 py-2 text-xs font-bold text-white hover:bg-white/10">Incident Reports</Link>
+          <Link to="/admin/portal?section=verification" className="rounded-xl border border-white/20 px-3 py-2 text-xs font-bold text-white hover:bg-white/10">QR Verification</Link>
+        </nav>
       </div>
 
       {/* Main Container */}

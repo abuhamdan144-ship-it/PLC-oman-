@@ -9,7 +9,7 @@ import {
   updateDoc,
   writeBatch,
 } from 'firebase/firestore';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { db } from '../lib/firebase';
 import {
@@ -42,10 +42,13 @@ interface IncidentRecord {
 }
 
 const adminSections: { id: AdminSection; label: string; icon: LucideIcon }[] = [
-  { id: 'ballot', label: 'Voting & cabinet', icon: Vote },
+  { id: 'ballot', label: 'Voting & requirements', icon: Vote },
   { id: 'reports', label: 'Incident reports', icon: AlertTriangle },
   { id: 'verification', label: 'QR verification', icon: ShieldCheck },
 ];
+
+const parseAdminSection = (value: string | null): AdminSection =>
+  value === 'reports' || value === 'verification' ? value : 'ballot';
 
 const toDateInput = (date: Date) => {
   const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
@@ -60,7 +63,8 @@ const incidentDate = (value: Timestamp | string | undefined) => {
 
 export const AdminPortalPage: React.FC = () => {
   const { user, member: admin } = useAuth();
-  const [section, setSection] = useState<AdminSection>('ballot');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [section, setSection] = useState<AdminSection>(() => parseAdminSection(searchParams.get('section')));
   const [activeElectionId, setActiveElectionId] = useState<string | null>(null);
   const [activeElection, setActiveElection] = useState<CommunityElection | null>(null);
   const [voteTally, setVoteTally] = useState<Record<string, number>>({});
@@ -76,6 +80,10 @@ export const AdminPortalPage: React.FC = () => {
   const [isClosingElection, setIsClosingElection] = useState(false);
   const [isSyncingPublicRecords, setIsSyncingPublicRecords] = useState(false);
   const [notice, setNotice] = useState<{ text: string; error?: boolean } | null>(null);
+
+  useEffect(() => {
+    setSection(parseAdminSection(searchParams.get('section')));
+  }, [searchParams]);
 
   useEffect(() => {
     return onSnapshot(
@@ -335,7 +343,7 @@ export const AdminPortalPage: React.FC = () => {
         {notice && <div role="status" className={`mb-4 rounded-xl border p-3 text-sm font-semibold ${notice.error ? 'border-rose-200 bg-rose-50 text-rose-900' : 'border-emerald-200 bg-emerald-50 text-emerald-900'}`}>{notice.text}</div>}
         <nav aria-label="Administrator tools" className="mb-5 flex gap-2 overflow-x-auto rounded-2xl border border-stone-200 bg-white p-2 shadow-sm">
           {adminSections.map(({ id, label, icon: Icon }) => (
-            <button key={id} type="button" onClick={() => setSection(id)} aria-current={section === id ? 'page' : undefined} className={`inline-flex shrink-0 items-center gap-2 rounded-xl px-4 py-3 text-xs font-bold ${section === id ? 'bg-[#071F25] text-white' : 'text-stone-600 hover:bg-stone-100'}`}>
+            <button key={id} type="button" onClick={() => { setSection(id); setSearchParams({ section: id }, { replace: true }); }} aria-current={section === id ? 'page' : undefined} className={`inline-flex shrink-0 items-center gap-2 rounded-xl px-4 py-3 text-xs font-bold ${section === id ? 'bg-[#071F25] text-white' : 'text-stone-600 hover:bg-stone-100'}`}>
               <Icon className="h-4 w-4" /> {label}
             </button>
           ))}

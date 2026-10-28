@@ -12,7 +12,9 @@ import {
   Clock, 
   Menu, 
   X,
-  CreditCard
+  CreditCard,
+  Vote,
+  FileText
 } from 'lucide-react';
 
 export const Navbar: React.FC = () => {
@@ -203,8 +205,21 @@ export const Navbar: React.FC = () => {
                           className="flex items-center gap-2.5 px-4 py-2 text-xs text-amber-800 hover:bg-amber-50 font-semibold"
                         >
                           <ShieldCheck className="w-4 h-4 text-amber-600" />
-                          {isAdmin ? 'Admin Registry Review' : 'Admin Portal'}
+                          {isAdmin ? 'Member Applications' : 'Admin Portal'}
                         </Link>
+                        {isAdmin && (
+                          <>
+                            <Link to="/admin/portal?section=ballot" onClick={() => setShowUserMenu(false)} className="flex items-center gap-2.5 px-4 py-2 text-xs text-stone-700 hover:bg-stone-50">
+                              <Vote className="h-4 w-4 text-emerald-700" /> Voting &amp; Requirements
+                            </Link>
+                            <Link to="/admin/portal?section=reports" onClick={() => setShowUserMenu(false)} className="flex items-center gap-2.5 px-4 py-2 text-xs text-stone-700 hover:bg-stone-50">
+                              <FileText className="h-4 w-4 text-amber-700" /> Incident Reports
+                            </Link>
+                            <Link to="/admin/portal?section=verification" onClick={() => setShowUserMenu(false)} className="flex items-center gap-2.5 px-4 py-2 text-xs text-stone-700 hover:bg-stone-50">
+                              <ShieldCheck className="h-4 w-4 text-emerald-700" /> QR Verification
+                            </Link>
+                          </>
+                        )}
 
                         <button
                           onClick={handleLogout}
@@ -307,8 +322,22 @@ export const Navbar: React.FC = () => {
                     className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-amber-300 hover:bg-white/10 font-bold"
                   >
                     <ShieldCheck className="w-4 h-4 text-amber-400" />
-                    {isAdmin ? 'Admin Dashboard' : 'Admin Login'}
+                    {isAdmin ? 'Member Applications' : 'Admin Login'}
                   </Link>
+
+                  {isAdmin && (
+                    <>
+                      <Link to="/admin/portal?section=ballot" onClick={() => setShowMobileMenu(false)} className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-stone-200 hover:bg-white/10">
+                        <Vote className="h-4 w-4 text-emerald-400" /> Voting &amp; Requirements
+                      </Link>
+                      <Link to="/admin/portal?section=reports" onClick={() => setShowMobileMenu(false)} className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-stone-200 hover:bg-white/10">
+                        <FileText className="h-4 w-4 text-amber-300" /> Incident Reports
+                      </Link>
+                      <Link to="/admin/portal?section=verification" onClick={() => setShowMobileMenu(false)} className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-stone-200 hover:bg-white/10">
+                        <ShieldCheck className="h-4 w-4 text-emerald-400" /> QR Verification
+                      </Link>
+                    </>
+                  )}
 
                 <button
                   onClick={handleLogout}
