@@ -43,6 +43,9 @@ export interface PublicMemberProfile {
 export interface ElectionOption {
   id: string;
   label: string;
+  memberId?: string;
+  bio?: string;
+  photoURL?: string;
 }
 
 export interface ElectionNominee {
@@ -61,6 +64,8 @@ export interface ElectionPosition {
 export interface CommunityElection {
   title: string;
   description: string;
+  postTitle?: string;
+  votingRequirements?: string;
   positions?: ElectionPosition[];
   // Kept for compatibility with ballots created before the cabinet-position flow.
   options?: ElectionOption[];
@@ -72,6 +77,7 @@ export interface CommunityElection {
 
 export interface MemberNotification {
   id: string;
+  electionId?: string;
   title: string;
   body: string;
   createdAt: string;

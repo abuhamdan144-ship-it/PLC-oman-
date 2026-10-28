@@ -11,7 +11,8 @@ import {
 } from 'firebase/firestore';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
-import { db } from '../lib/firebase';
+import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
+import { db, storage } from '../lib/firebase';
 import {
   AlertTriangle,
   Check,
@@ -22,7 +23,7 @@ import {
   Vote,
   type LucideIcon,
 } from 'lucide-react';
-import type { CommunityElection, ElectionNominee, ElectionPosition, MemberProfile } from '../types';
+import type { CommunityElection, ElectionOption, MemberProfile } from '../types';
 
 type AdminSection = 'ballot' | 'reports' | 'verification';
 type IncidentStatus = 'new' | 'reviewing' | 'resolved';
@@ -66,9 +67,12 @@ export const AdminPortalPage: React.FC = () => {
   const [voteTally, setVoteTally] = useState<Record<string, number>>({});
   const [incidentRecords, setIncidentRecords] = useState<IncidentRecord[]>([]);
   const [loadingIncidents, setLoadingIncidents] = useState(true);
-  const [electionTitle, setElectionTitle] = useState('Community Cabinet Election');
-  const [electionDescription, setElectionDescription] = useState('Select one cabinet to represent the community.');
-  const [electionPositions, setElectionPositions] = useState('President: Nominee One | PLC-2026-00001 | Community leadership\nVice President: Nominee Two | PLC-2026-00002 | Welfare coordination\nGeneral Secretary: Nominee Three | PLC-2026-00003 | Administration\nTreasurer: Nominee Four | PLC-2026-00004 | Finance and records\nWelfare Secretary: Nominee Five | PLC-2026-00005 | Member welfare\nMedia & Communication Secretary: Nominee Six | PLC-2026-00006 | Community communications\nRegional Representative: Nominee Seven | PLC-2026-00007 | Regional coordination');
+  const [electionTitle, setElectionTitle] = useState('Community Election');
+  const [postTitle, setPostTitle] = useState('President');
+  const [electionDescription, setElectionDescription] = useState('Choose one nominated candidate for this post.');
+  const [votingRequirements, setVotingRequirements] = useState('Only approved members may vote. Each member may select one nominee once. Submitted votes cannot be changed or resubmitted.');
+  const [electionCandidates, setElectionCandidates] = useState('');
+  const [candidatePhotoFiles, setCandidatePhotoFiles] = useState<Record<string, File>>({});
   const [closesAt, setClosesAt] = useState(() => toDateInput(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)));
   const [isCreatingElection, setIsCreatingElection] = useState(false);
   const [isClosingElection, setIsClosingElection] = useState(false);
@@ -103,18 +107,14 @@ export const AdminPortalPage: React.FC = () => {
     );
     const unsubscribeVotes = onSnapshot(
       collection(db, 'elections', activeElectionId, 'votes'),
-      (snapshot) => {
-        const tally: Record<string, number> = {};
-        snapshot.forEach((vote) => {
-          const data = vote.data();
-          const selections = data.selections as Record<string, string> | undefined;
-          if (selections) {
-            Object.entries(selections).forEach(([positionId, nomineeId]) => {
-              const key = `${positionId}:${nomineeId}`;
-              tally[key] = (tally[key] || 0) + 1;
-            });
-          }
-        });
+        (snapshot) => {
+          const tally: Record<string, number> = {};
+          snapshot.forEach((vote) => {
+            const optionId = vote.data().optionId as string | undefined;
+            if (optionId) {
+              tally[optionId] = (tally[optionId] || 0) + 1;
+            }
+          });
         setVoteTally(tally);
       },
       (error) => {
@@ -159,18 +159,32 @@ export const AdminPortalPage: React.FC = () => {
   const handleCreateElection = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!user) return;
-    const positions: ElectionPosition[] = electionPositions.split('\n').map((line, positionIndex) => {
-      const [titlePart, nomineesPart = ''] = line.split(':');
-      const title = titlePart.trim();
-      const nominees: ElectionNominee[] = nomineesPart.split(',').map((raw, nomineeIndex) => {
-        const [namePart, memberIdPart, bioPart] = raw.split('|').map((value) => value?.trim() || '');
-        return { id: `nominee-${positionIndex + 1}-${nomineeIndex + 1}`, name: namePart, memberId: memberIdPart || undefined, bio: bioPart || undefined };
-      }).filter((nominee) => nominee.name);
-      return { id: `position-${positionIndex + 1}`, title, nominees };
-    }).filter((position) => position.title && position.nominees.length > 0);
+    const candidateLines = electionCandidates.split('\n').filter((line) => line.trim());
+    const options: ElectionOption[] = candidateLines.map((line, index) => {
+      const [name, memberId, bio, photoURL] = line.split('|').map((value) => value?.trim() || '');
+      return {
+        id: `candidate-${index + 1}`,
+        label: name,
+        ...(memberId ? { memberId } : {}),
+        ...(bio ? { bio } : {}),
+        ...(photoURL ? { photoURL } : {}),
+      };
+    });
     const closeDate = new Date(closesAt);
-    if (!positions.length || positions.some((position) => position.nominees.length < 2)) {
-      showNotice('Add every cabinet position with at least two nominees. Use: Position: Name | Member ID | Bio', true);
+    if (options.some((option) => !option.label)) {
+      showNotice('Every non-empty candidate line must include a candidate name.', true);
+      return;
+    }
+    if (options.length < 2) {
+      showNotice('Add at least two candidates, one per line: Name | Member ID | Details | Photo URL', true);
+      return;
+    }
+    if (options.some((option) => option.photoURL && !/^https?:\/\//i.test(option.photoURL))) {
+      showNotice('Candidate photo URLs must begin with https:// or http://.', true);
+      return;
+    }
+    if (!postTitle.trim() || !votingRequirements.trim()) {
+      showNotice('Enter the post being elected and the voting requirements.', true);
       return;
     }
     if (Number.isNaN(closeDate.getTime()) || closeDate.getTime() <= Date.now()) {
@@ -181,15 +195,25 @@ export const AdminPortalPage: React.FC = () => {
     setIsCreatingElection(true);
     try {
       const electionRef = doc(collection(db, 'elections'));
+      for (let index = 0; index < options.length; index += 1) {
+        const photoFile = candidatePhotoFiles[`${index}:${options[index].label.trim().toLowerCase()}`];
+        if (!photoFile || options[index].photoURL) continue;
+        const extension = photoFile.name.split('.').pop()?.replace(/[^a-z0-9]/gi, '').toLowerCase() || 'jpg';
+        const candidatePhotoRef = ref(storage, `profile-photos/${user.uid}/candidate_${electionRef.id}_${index + 1}.${extension}`);
+        const uploadResult = await uploadBytes(candidatePhotoRef, photoFile, { contentType: photoFile.type });
+        options[index] = { ...options[index], photoURL: await getDownloadURL(uploadResult.ref) };
+      }
       const batch = writeBatch(db);
       if (activeElectionId) {
         batch.update(doc(db, 'elections', activeElectionId), { status: 'closed', closedAt: serverTimestamp() });
       }
       batch.set(electionRef, {
         title: electionTitle.trim(),
+        postTitle: postTitle.trim(),
         description: electionDescription.trim(),
-        positions,
-        positionIds: positions.map((position) => position.id),
+        votingRequirements: votingRequirements.trim(),
+        options,
+        optionIds: options.map((option) => option.id),
         status: 'open',
         closesAt: Timestamp.fromDate(closeDate),
         createdAt: serverTimestamp(),
@@ -201,7 +225,32 @@ export const AdminPortalPage: React.FC = () => {
         updatedBy: user.uid,
       }, { merge: true });
       await batch.commit();
-      showNotice('The new ballot is live. The previous ballot has been closed.');
+      try {
+        const memberSnapshot = await getDocs(collection(db, 'members'));
+        const approvedMembers = memberSnapshot.docs.filter((item) => {
+          const data = item.data();
+          return data.role === 'member' && data.status === 'approved';
+        });
+        for (let offset = 0; offset < approvedMembers.length; offset += 450) {
+          const notificationBatch = writeBatch(db);
+          approvedMembers.slice(offset, offset + 450).forEach((memberDoc) => {
+            const notificationRef = doc(collection(db, 'members', memberDoc.id, 'notifications'));
+            notificationBatch.set(notificationRef, {
+              title: `Voting is open: ${electionTitle.trim()}`,
+              body: `${postTitle.trim()} ballot is open until ${closeDate.toLocaleString()}. ${votingRequirements.trim()}`,
+              type: 'announcement',
+              read: false,
+              createdAt: new Date().toISOString(),
+              electionId: electionRef.id,
+            });
+          });
+          await notificationBatch.commit();
+        }
+        showNotice(`The ballot is live. Voting notifications were sent to ${approvedMembers.length} approved members.`);
+      } catch (notificationError) {
+        console.error('Ballot is live, but voting notifications could not be sent:', notificationError);
+        showNotice('The ballot is live, but voting notifications could not be delivered. Please check admin permissions and notify members manually.', true);
+      }
     } catch (error) {
       console.error('Could not create the community ballot:', error);
       showNotice('Could not publish the ballot. Check your admin access and try again.', true);
@@ -307,21 +356,65 @@ export const AdminPortalPage: React.FC = () => {
             <section className="rounded-3xl border border-stone-200 bg-white p-5 shadow-sm sm:p-7">
               <div className="mb-5 flex items-start gap-3">
                 <div className="rounded-xl bg-amber-100 p-2.5 text-amber-900"><Vote className="h-5 w-5" /></div>
-                <div><p className="text-[10px] font-bold uppercase tracking-wider text-emerald-800">Admin-managed options</p><h2 className="text-lg font-bold text-[#071F25]">Create a cabinet election</h2><p className="mt-1 text-xs leading-relaxed text-stone-600">Each option is one cabinet/candidate group. Publishing a new ballot closes the previous one.</p></div>
+                <div><p className="text-[10px] font-bold uppercase tracking-wider text-emerald-800">Admin-managed ballot</p><h2 className="text-lg font-bold text-[#071F25]">Create a vote for one post</h2><p className="mt-1 text-xs leading-relaxed text-stone-600">Members choose one nominee for this post. Publishing a new ballot closes the previous one.</p></div>
               </div>
               <form onSubmit={handleCreateElection} className="space-y-4">
                 <TextField label="Ballot title" value={electionTitle} onChange={setElectionTitle} required />
+                <TextField label="Post / position being elected" value={postTitle} onChange={setPostTitle} required />
                 <label className="block text-xs font-bold text-[#071F25]">Instructions / description
                   <textarea value={electionDescription} onChange={(event) => setElectionDescription(event.target.value)} rows={3} className="mt-1.5 w-full rounded-xl border border-stone-300 px-3 py-3 text-sm font-normal" />
                 </label>
-                <label className="block text-xs font-bold text-[#071F25]">Cabinet positions and nominees <span className="font-normal text-stone-500">(one position per line; separate nominees with commas)</span>
-                  <textarea required value={electionPositions} onChange={(event) => setElectionPositions(event.target.value)} rows={8} placeholder={'President: Ali Khan | PLC-2026-00001 | Welfare experience, Hamza Ahmed | PLC-2026-00002 | Muscat representative'} className="mt-1.5 w-full rounded-xl border border-stone-300 px-3 py-3 text-sm font-normal" />
-                  <span className="mt-1 block text-[10px] font-normal text-stone-500">Format: <strong>Position: Nominee | Member ID | Short bio, Nominee 2 | Member ID | Short bio</strong></span>
+                <label className="block text-xs font-bold text-[#071F25]">Voting requirements (shown to members)
+                  <textarea required maxLength={600} value={votingRequirements} onChange={(event) => setVotingRequirements(event.target.value)} rows={3} className="mt-1.5 w-full rounded-xl border border-stone-300 px-3 py-3 text-sm font-normal" />
+                  <span className="mt-1 block text-[10px] font-normal text-stone-500">Firestore still enforces approved-member eligibility and one unchangeable vote per ballot.</span>
                 </label>
+                <label className="block text-xs font-bold text-[#071F25]">Nominated candidates <span className="font-normal text-stone-500">(one candidate per line)</span>
+                  <textarea required value={electionCandidates} onChange={(event) => setElectionCandidates(event.target.value)} rows={7} placeholder={'Candidate name | Member ID | Candidate details | https://image-url.jpg\nSecond candidate | PLC-2026-00002 | Experience and community role | https://image-url.jpg'} className="mt-1.5 w-full rounded-xl border border-stone-300 px-3 py-3 text-sm font-normal" />
+                  <span className="mt-1 block text-[10px] font-normal text-stone-500">Format: <strong>Name | Member ID | Details / short bio | Candidate photo URL (optional)</strong>. You can also select a photo from your phone below.</span>
+                </label>
+                {electionCandidates.split('\n').filter((line) => line.trim()).length > 0 && (
+                  <div className="space-y-2 rounded-xl border border-stone-200 bg-stone-50 p-3">
+                    <p className="text-[10px] font-extrabold uppercase tracking-wide text-stone-600">Candidate photos</p>
+                    {electionCandidates.split('\n').filter((line) => line.trim()).map((line, index) => {
+                      const candidateName = line.split('|')[0]?.trim() || `Candidate ${index + 1}`;
+                      const photoKey = `${index}:${candidateName.toLowerCase()}`;
+                      const photoURLProvided = Boolean(line.split('|')[3]?.trim());
+                      return (
+                        <label key={`${photoKey}-${index}`} className="flex flex-col gap-1 rounded-lg bg-white p-2 text-[11px] font-semibold text-stone-700 sm:flex-row sm:items-center sm:justify-between">
+                          <span>{candidateName} photo</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            disabled={photoURLProvided}
+                            onChange={(event) => {
+                              const file = event.target.files?.[0];
+                              if (!file) return;
+                              if (!file.type.startsWith('image/')) {
+                                showNotice('Candidate photos must be image files.', true);
+                                event.target.value = '';
+                                return;
+                              }
+                              if (file.size > 2 * 1024 * 1024) {
+                                showNotice('Each candidate photo must be 2 MB or smaller.', true);
+                                event.target.value = '';
+                                return;
+                              }
+                              setCandidatePhotoFiles((previous) => ({ ...previous, [photoKey]: file }));
+                            }}
+                            className="max-w-full text-[10px] file:mr-2 file:rounded-md file:border-0 file:bg-emerald-100 file:px-2 file:py-1 file:font-bold file:text-emerald-900"
+                          />
+                          {photoURLProvided && <span className="text-[10px] text-stone-500">Using photo URL</span>}
+                          {!photoURLProvided && candidatePhotoFiles[photoKey] && <span className="text-[10px] text-emerald-800">{candidatePhotoFiles[photoKey].name}</span>}
+                        </label>
+                      );
+                    })}
+                    <p className="text-[10px] text-stone-500">Photos are uploaded to Firebase Storage when the ballot is published (maximum 2 MB each).</p>
+                  </div>
+                )}
                 <label className="block text-xs font-bold text-[#071F25]">Voting closes at
                   <input type="datetime-local" required value={closesAt} onChange={(event) => setClosesAt(event.target.value)} className="mt-1.5 w-full rounded-xl border border-stone-300 px-3 py-3 text-sm font-normal" />
                 </label>
-                <button type="submit" disabled={isCreatingElection} className="w-full rounded-xl bg-[#071F25] px-4 py-3 text-sm font-bold text-white hover:bg-emerald-900 disabled:opacity-50">{isCreatingElection ? 'Publishing…' : 'Publish ballot to approved members'}</button>
+                <button type="submit" disabled={isCreatingElection} className="w-full rounded-xl bg-[#071F25] px-4 py-3 text-sm font-bold text-white hover:bg-emerald-900 disabled:opacity-50">{isCreatingElection ? 'Publishing & notifying…' : 'Publish one-choice ballot to approved members'}</button>
               </form>
             </section>
 
@@ -333,10 +426,12 @@ export const AdminPortalPage: React.FC = () => {
                 ) : (
                   <>
                     <div className="mt-3 rounded-xl bg-stone-50 p-4">
-                      <div className="flex items-start justify-between gap-2"><h3 className="font-bold text-[#071F25]">{activeElection.title}</h3><span className={`rounded-full px-2 py-1 text-[10px] font-bold uppercase ${activeElection.status === 'open' ? 'bg-emerald-100 text-emerald-900' : 'bg-stone-200 text-stone-700'}`}>{activeElection.status}</span></div>
+                      <div className="flex items-start justify-between gap-2"><div><h3 className="font-bold text-[#071F25]">{activeElection.title}</h3>{activeElection.postTitle && <p className="mt-0.5 text-xs font-semibold text-emerald-800">Post: {activeElection.postTitle}</p>}</div><span className={`rounded-full px-2 py-1 text-[10px] font-bold uppercase ${activeElection.status === 'open' ? 'bg-emerald-100 text-emerald-900' : 'bg-stone-200 text-stone-700'}`}>{activeElection.status}</span></div>
                       <p className="mt-1 text-xs text-stone-600">Closes {activeElection.closesAt?.toDate?.().toLocaleString() || 'date unavailable'}</p>
+                      {activeElection.votingRequirements && <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-950"><strong>Requirements:</strong> {activeElection.votingRequirements}</p>}
                       <div className="mt-4 space-y-2">
-                        {(activeElection.positions || []).map((position) => <div key={position.id} className="space-y-1"><p className="text-xs font-bold uppercase tracking-wide text-emerald-800">{position.title}</p>{position.nominees.map((nominee) => <div key={nominee.id} className="flex items-center justify-between gap-3 rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm"><span>{nominee.name}</span><span className="font-mono font-bold text-emerald-900">{voteTally[`${position.id}:${nominee.id}`] || 0} votes</span></div>)}</div>)}
+                        {(activeElection.options || []).map((option) => <div key={option.id} className="flex items-center justify-between gap-3 rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm">{option.photoURL ? <img src={option.photoURL} alt={option.label} className="h-12 w-12 rounded-lg object-cover" /> : <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-stone-100 font-bold text-stone-500">{option.label.charAt(0)}</div>}<div className="min-w-0 flex-1"><p className="font-bold text-[#071F25]">{option.label}</p>{option.memberId && <p className="text-[10px] font-mono text-emerald-800">{option.memberId}</p>}{option.bio && <p className="text-xs text-stone-600">{option.bio}</p>}</div><span className="shrink-0 font-mono font-bold text-emerald-900">{voteTally[option.id] || 0} votes</span></div>)}
+                        {!activeElection.options?.length && <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-950">This ballot uses the previous cabinet format and cannot accept votes under the current one-choice Firestore rules. Publish a new ballot in the updated format.</p>}
                       </div>
                       <p className="mt-3 text-xs font-semibold text-stone-500">Total ballots: {Object.values(voteTally).reduce((sum, count) => sum + count, 0)}</p>
                     </div>
@@ -344,7 +439,7 @@ export const AdminPortalPage: React.FC = () => {
                   </>
                 )}
               </div>
-              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-xs leading-relaxed text-amber-950">Only approved members can read and vote in the active ballot. The Firestore rules enforce one write per member per election; a submitted vote cannot be changed.</div>
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-xs leading-relaxed text-amber-950">Only approved members can read and vote. Each member can choose one nominee for the post and submit once per ballot. Firestore rejects a second write and does not allow votes to be edited or deleted.</div>
             </section>
           </div>
         )}

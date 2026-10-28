@@ -333,6 +333,27 @@ export const MemberPage: React.FC = () => {
           </div>
         )}
 
+        {notifications.filter((notification) => !notification.read && notification.type === 'announcement' && notification.title.startsWith('Voting is open:')).slice(0, 1).map((notification) => (
+          <div key={notification.id} role="status" className="mb-6 rounded-2xl border border-amber-300 bg-amber-50 p-4 shadow-sm sm:flex sm:items-center sm:justify-between sm:gap-4">
+            <div>
+              <p className="text-[10px] font-extrabold uppercase tracking-wide text-amber-900">New voting notification</p>
+              <h2 className="mt-1 text-sm font-bold text-[#071F25]">{notification.title}</h2>
+              <p className="mt-1 text-xs leading-relaxed text-stone-700">{notification.body}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                void markNotificationAsRead(notification.id).catch((error) => console.warn('Could not mark voting alert as read:', error));
+                setActiveTab('voting');
+                window.scrollTo({ top: 400, behavior: 'smooth' });
+              }}
+              className="mt-3 shrink-0 rounded-xl bg-[#071F25] px-4 py-2.5 text-xs font-bold text-white hover:bg-emerald-900 sm:mt-0"
+            >
+              Open ballot
+            </button>
+          </div>
+        ))}
+
         {/* TAB 1: MEMBERSHIP CARD */}
         {activeTab === 'card' && (
           <div className="space-y-8 animate-in fade-in duration-150">

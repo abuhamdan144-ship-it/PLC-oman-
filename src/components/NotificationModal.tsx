@@ -50,7 +50,7 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({
                 Community Notifications
               </h3>
               <p className="text-xs text-stone-300">
-                Official alerts and registration updates
+                Voting announcements, alerts and registration updates
               </p>
             </div>
           </div>
@@ -72,7 +72,7 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({
               </div>
               <p className="text-sm font-semibold text-[#071F25]">No notifications yet</p>
               <p className="text-xs text-stone-500 mt-1 max-w-xs mx-auto">
-                Official announcements and updates regarding your membership review will appear here.
+                Voting announcements and official updates regarding your membership will appear here.
               </p>
             </div>
           ) : (
