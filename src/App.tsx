@@ -46,7 +46,7 @@ const AppContent: React.FC = () => {
           <Route path="/" element={<RootRedirector />} />
 
           <Route path="/register" element={<PublicOnlyRoute><RegisterPage /></PublicOnlyRoute>} />
-          <Route path="/login" element={<PublicOnlyRoute><LoginPage /></PublicOnlyRoute>} />
+          <Route path="/login" element={<LoginPage />} />
           <Route path="/admin/login" element={<LoginPage />} />
 
           <Route path="/pending-approval" element={<PendingApprovalRoute><PendingApprovalPage /></PendingApprovalRoute>} />

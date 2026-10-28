@@ -6,7 +6,7 @@ import {
 } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
-import { isPlcAdminEmail, MASTER_ADMIN_PROFILE } from '../hooks/useAuth';
+import { MASTER_ADMIN_PROFILE } from '../hooks/useAuth';
 import { PakistanLabourCommunityLogo } from '../lib/logo';
 import { FlagPair } from '../lib/flags';
 import { 
@@ -143,12 +143,6 @@ export const LoginPage: React.FC = () => {
       return;
     }
 
-    // If user entered admin email in member form, route directly as admin!
-    if (isPlcAdminEmail(cleanEmail)) {
-      await executeAdminLogin(cleanEmail, memberPassword);
-      return;
-    }
-
     setIsLoading(true);
 
     try {
@@ -164,7 +158,7 @@ export const LoginPage: React.FC = () => {
         const status = memberData.status;
 
         if (role === 'admin') {
-          navigate('/admin/registrations');
+          setErrorMessage('This account is configured for the administrator portal, not as a member profile. Use a member account to view a membership card, voting, emergency contacts, and reports.');
           return;
         }
 
