@@ -11,8 +11,7 @@ import {
 } from 'firebase/firestore';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
-import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
-import { db, storage } from '../lib/firebase';
+import { db } from '../lib/firebase';
 import {
   AlertTriangle,
   Check,
@@ -72,7 +71,6 @@ export const AdminPortalPage: React.FC = () => {
   const [electionDescription, setElectionDescription] = useState('Choose one nominated candidate for this post.');
   const [votingRequirements, setVotingRequirements] = useState('Only approved members may vote. Each member may select one nominee once. Submitted votes cannot be changed or resubmitted.');
   const [electionCandidates, setElectionCandidates] = useState('');
-  const [candidatePhotoFiles, setCandidatePhotoFiles] = useState<Record<string, File>>({});
   const [closesAt, setClosesAt] = useState(() => toDateInput(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)));
   const [isCreatingElection, setIsCreatingElection] = useState(false);
   const [isClosingElection, setIsClosingElection] = useState(false);
@@ -179,8 +177,8 @@ export const AdminPortalPage: React.FC = () => {
       showNotice('Add at least two candidates, one per line: Name | Member ID | Details | Photo URL', true);
       return;
     }
-    if (options.some((option) => option.photoURL && !/^https?:\/\//i.test(option.photoURL))) {
-      showNotice('Candidate photo URLs must begin with https:// or http://.', true);
+    if (options.some((option) => option.photoURL && !/^https:\/\//i.test(option.photoURL))) {
+      showNotice('Candidate photo URLs must begin with https://.', true);
       return;
     }
     if (!postTitle.trim() || !votingRequirements.trim()) {
@@ -195,14 +193,6 @@ export const AdminPortalPage: React.FC = () => {
     setIsCreatingElection(true);
     try {
       const electionRef = doc(collection(db, 'elections'));
-      for (let index = 0; index < options.length; index += 1) {
-        const photoFile = candidatePhotoFiles[`${index}:${options[index].label.trim().toLowerCase()}`];
-        if (!photoFile || options[index].photoURL) continue;
-        const extension = photoFile.name.split('.').pop()?.replace(/[^a-z0-9]/gi, '').toLowerCase() || 'jpg';
-        const candidatePhotoRef = ref(storage, `profile-photos/${user.uid}/candidate_${electionRef.id}_${index + 1}.${extension}`);
-        const uploadResult = await uploadBytes(candidatePhotoRef, photoFile, { contentType: photoFile.type });
-        options[index] = { ...options[index], photoURL: await getDownloadURL(uploadResult.ref) };
-      }
       const batch = writeBatch(db);
       if (activeElectionId) {
         batch.update(doc(db, 'elections', activeElectionId), { status: 'closed', closedAt: serverTimestamp() });
@@ -370,47 +360,8 @@ export const AdminPortalPage: React.FC = () => {
                 </label>
                 <label className="block text-xs font-bold text-[#071F25]">Nominated candidates <span className="font-normal text-stone-500">(one candidate per line)</span>
                   <textarea required value={electionCandidates} onChange={(event) => setElectionCandidates(event.target.value)} rows={7} placeholder={'Candidate name | Member ID | Candidate details | https://image-url.jpg\nSecond candidate | PLC-2026-00002 | Experience and community role | https://image-url.jpg'} className="mt-1.5 w-full rounded-xl border border-stone-300 px-3 py-3 text-sm font-normal" />
-                  <span className="mt-1 block text-[10px] font-normal text-stone-500">Format: <strong>Name | Member ID | Details / short bio | Candidate photo URL (optional)</strong>. You can also select a photo from your phone below.</span>
+                  <span className="mt-1 block text-[10px] font-normal text-stone-500">Format: <strong>Name | Member ID | Details / short bio | Candidate photo URL (optional)</strong>. Firebase Storage is not enabled for this project yet; paste a public HTTPS image link.</span>
                 </label>
-                {electionCandidates.split('\n').filter((line) => line.trim()).length > 0 && (
-                  <div className="space-y-2 rounded-xl border border-stone-200 bg-stone-50 p-3">
-                    <p className="text-[10px] font-extrabold uppercase tracking-wide text-stone-600">Candidate photos</p>
-                    {electionCandidates.split('\n').filter((line) => line.trim()).map((line, index) => {
-                      const candidateName = line.split('|')[0]?.trim() || `Candidate ${index + 1}`;
-                      const photoKey = `${index}:${candidateName.toLowerCase()}`;
-                      const photoURLProvided = Boolean(line.split('|')[3]?.trim());
-                      return (
-                        <label key={`${photoKey}-${index}`} className="flex flex-col gap-1 rounded-lg bg-white p-2 text-[11px] font-semibold text-stone-700 sm:flex-row sm:items-center sm:justify-between">
-                          <span>{candidateName} photo</span>
-                          <input
-                            type="file"
-                            accept="image/*"
-                            disabled={photoURLProvided}
-                            onChange={(event) => {
-                              const file = event.target.files?.[0];
-                              if (!file) return;
-                              if (!file.type.startsWith('image/')) {
-                                showNotice('Candidate photos must be image files.', true);
-                                event.target.value = '';
-                                return;
-                              }
-                              if (file.size > 2 * 1024 * 1024) {
-                                showNotice('Each candidate photo must be 2 MB or smaller.', true);
-                                event.target.value = '';
-                                return;
-                              }
-                              setCandidatePhotoFiles((previous) => ({ ...previous, [photoKey]: file }));
-                            }}
-                            className="max-w-full text-[10px] file:mr-2 file:rounded-md file:border-0 file:bg-emerald-100 file:px-2 file:py-1 file:font-bold file:text-emerald-900"
-                          />
-                          {photoURLProvided && <span className="text-[10px] text-stone-500">Using photo URL</span>}
-                          {!photoURLProvided && candidatePhotoFiles[photoKey] && <span className="text-[10px] text-emerald-800">{candidatePhotoFiles[photoKey].name}</span>}
-                        </label>
-                      );
-                    })}
-                    <p className="text-[10px] text-stone-500">Photos are uploaded to Firebase Storage when the ballot is published (maximum 2 MB each).</p>
-                  </div>
-                )}
                 <label className="block text-xs font-bold text-[#071F25]">Voting closes at
                   <input type="datetime-local" required value={closesAt} onChange={(event) => setClosesAt(event.target.value)} className="mt-1.5 w-full rounded-xl border border-stone-300 px-3 py-3 text-sm font-normal" />
                 </label>

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { 
   signInWithEmailAndPassword, 
+  signOut,
   sendPasswordResetEmail,
   browserLocalPersistence,
   browserSessionPersistence,
@@ -9,7 +10,7 @@ import {
 } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
-import { MASTER_ADMIN_PROFILE } from '../hooks/useAuth';
+import { isPlcAdminEmail } from '../hooks/useAuth';
 import { PakistanLabourCommunityLogo } from '../lib/logo';
 import { FlagPair } from '../lib/flags';
 import { 
@@ -79,30 +80,25 @@ export const LoginPage: React.FC = () => {
         throw new Error('Administrator authentication failed. Please check the email and password.');
       }
 
-      // Upsert admin record in Firestore.
-      try {
-        await setDoc(doc(db, 'members', authUser.uid), {
-            uid: authUser.uid,
-            memberId: 'PLC-2026-ADMIN',
-            fullName: 'Community Executive Administrator (PLC)',
-            email: cleanEmail,
-            mobile: '+968 96766876',
-            country: 'Oman',
-            currentLocation: 'Muscat, Sultanate of Oman',
-            idNumber: 'ADMIN-PLC-001',
-            photoURL: MASTER_ADMIN_PROFILE.photoURL,
-            status: 'approved',
-            role: 'admin',
-            adminNote: 'Master Community Administrator Account',
-            registeredAt: new Date().toISOString(),
-            approvedAt: new Date().toISOString(),
-            memberSince: 'January 2026',
-          }, { merge: true });
-      } catch (dbErr) {
-        console.warn('Firestore admin upsert notice:', dbErr);
+      let hasAdminRole = false;
+      if (!isPlcAdminEmail(authUser.email)) {
+        try {
+          const ownProfile = await getDoc(doc(db, 'members', authUser.uid));
+          hasAdminRole = ownProfile.exists() && ownProfile.data().role === 'admin';
+        } catch (profileError) {
+          console.warn('Could not verify the administrator profile:', profileError);
+        }
+      }
+      if (!isPlcAdminEmail(authUser.email) && !hasAdminRole) {
+        try {
+          await signOut(auth);
+        } catch (signOutError) {
+          console.warn('Could not end the unauthorized member session:', signOutError);
+        }
+        throw new Error('Member login accounts are for the member portal only. Use a separate administrator account authorized by the Firestore rules.');
       }
 
-      // Navigate directly to Admin Dashboard
+      // Never create or promote a member profile from the admin login form.
       navigate('/admin/registrations', { replace: true });
     } catch (err: unknown) {
       console.error('Admin login error:', err);
@@ -314,7 +310,7 @@ export const LoginPage: React.FC = () => {
                   <div>
                     <p className="font-bold">Community Administrator Desk</p>
                     <p className="text-[11px] text-stone-600 mt-0.5">
-                      Review, verify, and approve pending member registrations.
+                      Member accounts are separate. Use an authorized administrator account, such as PLC@community.com.
                     </p>
                   </div>
                 </div>
@@ -322,17 +318,18 @@ export const LoginPage: React.FC = () => {
                 <form onSubmit={handleAdminSubmit} className="space-y-3.5">
                   <div>
                     <label htmlFor="admin-username" className="block text-xs font-bold text-[#071F25] mb-1">
-                      Admin Username / Email
+                      Authorized Admin Email
                     </label>
                     <div className="relative">
                       <Mail className="w-4 h-4 text-stone-400 absolute left-3 top-3 pointer-events-none" />
                       <input
                         id="admin-username"
-                        type="text"
+                        type="email"
                         required
                         value={adminUsername}
                         onChange={(e) => setAdminUsername(e.target.value)}
-                        placeholder="Enter administrator email"
+                        placeholder="PLC@community.com"
+                        autoComplete="username"
                         className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-stone-300 text-sm font-semibold text-[#071F25] focus:outline-hidden focus:ring-2 focus:ring-[#071F25]"
                       />
                     </div>
@@ -351,6 +348,7 @@ export const LoginPage: React.FC = () => {
                         value={adminPassword}
                         onChange={(e) => setAdminPassword(e.target.value)}
                         placeholder="Enter administrator password"
+                        autoComplete="current-password"
                         className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-stone-300 text-sm font-semibold text-[#071F25] focus:outline-hidden focus:ring-2 focus:ring-[#071F25]"
                       />
                     </div>

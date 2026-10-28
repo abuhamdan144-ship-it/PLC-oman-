@@ -476,7 +476,7 @@ export const AdminRegistrationsPage: React.FC = () => {
 
         {loadError && (
           <div role="alert" className="mb-6 rounded-2xl border border-rose-300 bg-rose-50 p-4 text-sm font-semibold text-rose-950">
-            {loadError} Check that you are signed in with an administrator account authorized by Firestore rules. The registry is not being shown as empty because of this error.
+            {loadError} Current Firebase account: <span className="font-mono">{user?.email || 'not signed in'}</span>. Member accounts are for Member Sign In only; use a separate administrator account authorized by Firestore rules. The registry is not being shown as empty because of this error.
           </div>
         )}
         

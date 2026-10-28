@@ -573,6 +573,9 @@ export const RegisterPage: React.FC = () => {
                     className="sr-only"
                   />
                 </label>
+                <p className="mt-2 text-[10px] leading-relaxed text-amber-800">
+                  Photo uploads need Firebase Storage, which is not enabled for this project yet. Registration can continue, but the photo will not be saved until Storage is set up.
+                </p>
                 {fieldErrors.photo && (
                   <p className="text-xs text-rose-600 mt-1">{fieldErrors.photo}</p>
                 )}

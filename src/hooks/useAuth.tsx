@@ -10,14 +10,13 @@ import {
   collection, 
   query, 
   orderBy, 
-  updateDoc,
-  setDoc 
+  updateDoc
 } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
 import { MemberProfile, MemberNotification } from '../types';
 
 interface AuthContextType {
-  user: User | { uid: string; email: string | null } | null;
+  user: User | null;
   member: MemberProfile | null;
   notifications: MemberNotification[];
   unreadNotificationsCount: number;
@@ -30,25 +29,18 @@ interface AuthContextType {
   signOut: () => Promise<void>;
   markNotificationAsRead: (notificationId: string) => Promise<void>;
   refetchMember: () => Promise<void>;
-  loginAsMasterAdmin: () => void;
 }
 
 export const isPlcAdminEmail = (email?: string | null): boolean => {
   if (!email) return false;
   const clean = email.trim().toLowerCase();
-  return (
-    clean === 'plc@community.com' ||
-    clean === 'hiapp144@gmail.com' ||
-    clean === 'abuhamdan144@gmail.com' ||
-    clean === 'abihamdan144@gmail.com' ||
-    clean.includes('hiapp') ||
-    clean.includes('abuhamdan') ||
-    clean.includes('abihamdan') ||
-    clean === 'admin@community.com' ||
-    clean === 'plc-admin' ||
-    clean.startsWith('admin') ||
-    clean.endsWith('@community.com')
-  );
+  return [
+    'plc@community.com',
+    'hiapp144@gmail.com',
+    'abuhamdan144@gmail.com',
+    'abihamdan144@gmail.com',
+    'admin@community.com',
+  ].includes(clean);
 };
 
 export const MASTER_ADMIN_PROFILE: MemberProfile = {
@@ -88,11 +80,10 @@ const AuthContext = createContext<AuthContextType>({
   signOut: async () => {},
   markNotificationAsRead: async () => {},
   refetchMember: async () => {},
-  loginAsMasterAdmin: () => {},
 });
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | { uid: string; email: string | null } | null>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [member, setMember] = useState<MemberProfile | null>(null);
   const [notifications, setNotifications] = useState<MemberNotification[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -121,35 +112,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
 
-      // If this is the designated administrator email, immediately set full admin profile and self-heal
+      // Show a local admin profile for explicitly authorized admin accounts.
       const isDesignatedAdmin = isPlcAdminEmail(currentUser.email);
       if (isDesignatedAdmin) {
         setMember({
           ...MASTER_ADMIN_PROFILE,
           uid: currentUser.uid,
           email: currentUser.email || MASTER_ADMIN_PROFILE.email,
-        });
-
-        // Background self-heal of Firestore member document so rules and queries succeed
-        const adminDocRef = doc(db, 'members', currentUser.uid);
-        setDoc(adminDocRef, {
-          uid: currentUser.uid,
-          memberId: 'PLC-2026-ADMIN',
-          fullName: 'Community Executive Administrator (PLC)',
-          email: currentUser.email || MASTER_ADMIN_PROFILE.email,
-          mobile: '+968 96766876',
-          country: 'Oman',
-          currentLocation: 'Muscat, Sultanate of Oman',
-          idNumber: 'ADMIN-PLC-001',
-          photoURL: MASTER_ADMIN_PROFILE.photoURL,
-          status: 'approved',
-          role: 'admin',
-          adminNote: 'Master Community Administrator Account',
-          registeredAt: new Date().toISOString(),
-          approvedAt: new Date().toISOString(),
-          memberSince: 'January 2026',
-        }, { merge: true }).catch((err) => {
-          console.warn('Silent admin self-heal note:', err);
         });
       }
 
@@ -249,9 +218,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const handleSignOut = async () => {
     try {
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem('plc_admin_session');
-      }
       await firebaseSignOut(auth);
       setUser(null);
       setMember(null);
@@ -259,15 +225,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (err) {
       console.error('Error signing out:', err);
     }
-  };
-
-  const loginAsMasterAdmin = () => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('plc_admin_session', 'true');
-    }
-    setUser({ uid: MASTER_ADMIN_PROFILE.uid, email: MASTER_ADMIN_PROFILE.email });
-    setMember(MASTER_ADMIN_PROFILE);
-    setLoading(false);
   };
 
   const markNotificationAsRead = async (notificationId: string) => {
@@ -313,7 +270,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         signOut: handleSignOut,
         markNotificationAsRead,
         refetchMember,
-        loginAsMasterAdmin,
       }}
     >
       {children}
