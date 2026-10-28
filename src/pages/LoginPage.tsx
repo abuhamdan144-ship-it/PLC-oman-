@@ -7,7 +7,7 @@ import {
 } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
-import { useAuth, isPlcAdminEmail, MASTER_ADMIN_PROFILE } from '../hooks/useAuth';
+import { isPlcAdminEmail, MASTER_ADMIN_PROFILE } from '../hooks/useAuth';
 import { PakistanLabourCommunityLogo } from '../lib/logo';
 import { FlagPair } from '../lib/flags';
 import { 
@@ -27,7 +27,6 @@ import {
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { loginAsMasterAdmin } = useAuth();
 
   // Check URL params: if '?role=admin' or '?admin=true', start on Admin tab
   const params = new URLSearchParams(location.search);
@@ -62,7 +61,7 @@ export const LoginPage: React.FC = () => {
 
   /**
    * Helper to execute guaranteed Admin Login:
-   * Sets local admin session, authenticates or provisions in Firebase, and redirects.
+   * Authenticates or provisions the administrator in Firebase, then redirects.
    */
   const executeAdminLogin = async (emailInput: string, passInput: string) => {
     setIsLoading(true);
@@ -75,10 +74,7 @@ export const LoginPage: React.FC = () => {
     }
 
     try {
-      // 1. Set local master admin session immediately so UI never blocks
-      loginAsMasterAdmin();
-
-      // 2. Authenticate with Firebase Auth
+      // Authenticate with Firebase Auth before granting access to Firestore-backed tools.
       let authUser = null;
       try {
         const userCred = await signInWithEmailAndPassword(auth, cleanEmail, passInput);
@@ -101,10 +97,13 @@ export const LoginPage: React.FC = () => {
         }
       }
 
-      // 3. Upsert admin record in Firestore if auth user is available
-      if (authUser) {
-        try {
-          await setDoc(doc(db, 'members', authUser.uid), {
+      if (!authUser) {
+        throw new Error('Administrator authentication failed. Please check the email and password.');
+      }
+
+      // Upsert admin record in Firestore.
+      try {
+        await setDoc(doc(db, 'members', authUser.uid), {
             uid: authUser.uid,
             memberId: 'PLC-2026-ADMIN',
             fullName: 'Community Executive Administrator (PLC)',
@@ -121,18 +120,15 @@ export const LoginPage: React.FC = () => {
             approvedAt: new Date().toISOString(),
             memberSince: 'January 2026',
           }, { merge: true });
-        } catch (dbErr) {
-          console.warn('Firestore admin upsert notice:', dbErr);
-        }
+      } catch (dbErr) {
+        console.warn('Firestore admin upsert notice:', dbErr);
       }
 
-      // 4. Navigate directly to Admin Dashboard
+      // Navigate directly to Admin Dashboard
       navigate('/admin/registrations', { replace: true });
     } catch (err: unknown) {
       console.error('Admin login error:', err);
-      // Fallback: local admin session is still valid
-      loginAsMasterAdmin();
-      navigate('/admin/registrations', { replace: true });
+      setErrorMessage(err instanceof Error ? err.message : 'Administrator authentication failed.');
     } finally {
       setIsLoading(false);
     }

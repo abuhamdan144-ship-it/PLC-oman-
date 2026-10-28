@@ -36,16 +36,12 @@ import { isPlcAdminEmail } from '../hooks/useAuth';
  * Screen shown when an authenticated non-admin user attempts to access /admin/*
  */
 const AdminAccessGate: React.FC<{ user: { uid: string; email: string | null }; member: unknown }> = ({ user }) => {
-  const { loginAsMasterAdmin, signOut } = useAuth();
+  const { signOut } = useAuth();
   const [activating, setActivating] = React.useState(false);
   const isTargetAdmin = isPlcAdminEmail(user.email);
 
   const handleActivate = () => {
     setActivating(true);
-    loginAsMasterAdmin();
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('plc_admin_session', 'true');
-    }
     setTimeout(() => {
       window.location.href = '/admin/registrations';
     }, 150);
@@ -144,8 +140,7 @@ export const ProtectedAdminRoute: React.FC<{ children: React.ReactNode }> = ({ c
   const isConfiguredAdmin = 
     isAdmin || 
     member?.role === 'admin' ||
-    isPlcAdminEmail(user?.email) ||
-    (typeof window !== 'undefined' && localStorage.getItem('plc_admin_session') === 'true');
+    isPlcAdminEmail(user?.email);
 
   if (loading) {
     return <LoadingSkeleton message="Verifying administrator credentials..." />;

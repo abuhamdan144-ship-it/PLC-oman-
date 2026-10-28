@@ -12,7 +12,6 @@ import {
 import { db } from '../lib/firebase';
 import { useAuth } from '../hooks/useAuth';
 import { MemberProfile, MemberStatus, MemberCountry } from '../types';
-import { SAMPLE_MEMBER_PENDING, SAMPLE_MEMBER_APPROVED } from '../lib/seed';
 import { MembershipCard } from '../components/MembershipCard';
 import { PakistanFlag, OmanFlag, FlagPair } from '../lib/flags';
 import { 
@@ -80,55 +79,6 @@ export const AdminRegistrationsPage: React.FC = () => {
   const [actionProcessing, setActionProcessing] = useState(false);
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
-  // Helper to merge local cache and Firestore data
-  const mergeMembers = (remoteList: MemberProfile[]): MemberProfile[] => {
-    let localList: MemberProfile[] = [];
-    if (typeof window !== 'undefined') {
-      try {
-        const stored = localStorage.getItem('plc_registered_members');
-        if (stored) {
-          localList = JSON.parse(stored);
-        }
-      } catch (err) {
-        console.warn('Error reading local members:', err);
-      }
-    }
-
-    // Combine map by UID
-    const map = new Map<string, MemberProfile>();
-
-    // Start with seeds if empty
-    [SAMPLE_MEMBER_PENDING, SAMPLE_MEMBER_APPROVED].forEach((m) => {
-      map.set(m.uid, m);
-    });
-
-    // Add local items
-    localList.forEach((m) => {
-      map.set(m.uid, m);
-    });
-
-    // Add remote items (overwrites seeds)
-    remoteList.forEach((m) => {
-      map.set(m.uid, m);
-    });
-
-    // Apply any local status overrides from localStorage
-    if (typeof window !== 'undefined') {
-      map.forEach((m, uid) => {
-        const localStatus = localStorage.getItem(`plc_member_status_${uid}`);
-        const localMemberId = localStorage.getItem(`plc_member_id_${uid}`);
-        if (localStatus) {
-          m.status = localStatus as MemberStatus;
-        }
-        if (localMemberId) {
-          m.memberId = localMemberId;
-        }
-      });
-    }
-
-    return Array.from(map.values());
-  };
-
   // Real-time listener for all members
   useEffect(() => {
     setLoading(true);
@@ -144,12 +94,13 @@ export const AdminRegistrationsPage: React.FC = () => {
             ...doc.data(),
           } as MemberProfile);
         });
-        setMembers(mergeMembers(list));
+        // Firestore is the source of truth; never re-add demo or stale cache records.
+        setMembers(list);
         setLoading(false);
       },
       (error) => {
-        console.warn('Member registry note (using initial preview files):', error.message);
-        setMembers(mergeMembers([]));
+        console.warn('Member registry error:', error.message);
+        setMembers([]);
         setLoading(false);
       }
     );
@@ -443,26 +394,14 @@ export const AdminRegistrationsPage: React.FC = () => {
       },
     };
 
-    // Save to local cache
-    if (typeof window !== 'undefined') {
-      try {
-        localStorage.setItem(`plc_member_doc_${newUid}`, JSON.stringify(newProfile));
-        localStorage.setItem(`plc_member_status_${newUid}`, 'approved');
-        localStorage.setItem(`plc_member_id_${newUid}`, randomId);
-
-        const stored = localStorage.getItem('plc_registered_members');
-        const list = stored ? JSON.parse(stored) : [];
-        localStorage.setItem('plc_registered_members', JSON.stringify([newProfile, ...list]));
-      } catch (err) {
-        console.warn('Storage note:', err);
-      }
-    }
-
-    // Save to Firestore
+    // Firestore is the source of truth. Never claim success from a browser-only cache.
     try {
       await setDoc(doc(db, 'members', newUid), newProfile);
     } catch (err) {
-      console.warn('Firestore write note:', err);
+      console.error('Could not create member in Firestore:', err);
+      setIsAddingMember(false);
+      showToast('Could not save this member to Firestore. Please sign in again as an administrator and retry.', 'error');
+      return;
     }
 
     setMembers((prev) => [newProfile, ...prev]);

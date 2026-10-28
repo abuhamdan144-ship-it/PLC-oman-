@@ -97,28 +97,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [notifications, setNotifications] = useState<MemberNotification[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
 
-  // Check initial master admin session in localStorage
-  useEffect(() => {
-    if (typeof window !== 'undefined' && localStorage.getItem('plc_admin_session') === 'true') {
-      setUser({ uid: MASTER_ADMIN_PROFILE.uid, email: MASTER_ADMIN_PROFILE.email });
-      setMember(MASTER_ADMIN_PROFILE);
-      setLoading(false);
-    }
-  }, []);
-
   useEffect(() => {
     let unsubscribeMember: (() => void) | null = null;
     let unsubscribeNotifications: (() => void) | null = null;
 
     const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
-      // If master admin session is active in localStorage, do not overwrite unless signed out
-      if (typeof window !== 'undefined' && localStorage.getItem('plc_admin_session') === 'true') {
-        setUser({ uid: MASTER_ADMIN_PROFILE.uid, email: MASTER_ADMIN_PROFILE.email });
-        setMember(MASTER_ADMIN_PROFILE);
-        setLoading(false);
-        return;
-      }
-
       setUser(currentUser);
 
       // Clean up previous listeners
@@ -141,9 +124,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // If this is the designated administrator email, immediately set full admin profile and self-heal
       const isDesignatedAdmin = isPlcAdminEmail(currentUser.email);
       if (isDesignatedAdmin) {
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('plc_admin_session', 'true');
-        }
         setMember({
           ...MASTER_ADMIN_PROFILE,
           uid: currentUser.uid,
@@ -322,7 +302,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const unreadNotificationsCount = notifications.filter((n) => !n.read).length;
   const isAdmin = 
-    (typeof window !== 'undefined' && localStorage.getItem('plc_admin_session') === 'true') ||
     isPlcAdminEmail(user?.email) || 
     member?.role === 'admin';
   const isApproved = member?.status === 'approved' || isAdmin;
