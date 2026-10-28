@@ -246,7 +246,7 @@ export const MemberPage: React.FC = () => {
           </div>
 
           {/* Secondary Nav Tabs */}
-          <div className="flex items-center gap-1 overflow-x-auto mt-8 border-b border-white/10 pb-0.5 text-xs font-semibold scrollbar-none">
+          <div className="hidden md:flex items-center gap-1 overflow-x-auto mt-8 border-b border-white/10 pb-0.5 text-xs font-semibold scrollbar-none">
             <button
               onClick={() => setActiveTab('card')}
               className={`flex items-center gap-1.5 px-4 py-2.5 rounded-t-xl transition-colors shrink-0 ${
@@ -914,6 +914,36 @@ export const MemberPage: React.FC = () => {
         )}
 
       </main>
+
+      <nav
+        aria-label="Member portal navigation"
+        className="fixed inset-x-0 bottom-0 z-40 border-t border-stone-200 bg-white/95 shadow-[0_-6px_20px_rgba(7,31,37,0.08)] backdrop-blur-md pb-[env(safe-area-inset-bottom)] md:hidden"
+      >
+        <div className="mx-auto flex max-w-lg items-stretch justify-around">
+          {[
+            { id: 'card', label: 'Card', fullLabel: 'Membership Card', Icon: CreditCard },
+            { id: 'profile', label: 'Profile', fullLabel: 'Profile Details', Icon: User },
+            { id: 'rules', label: 'Community', fullLabel: 'Community Rules & Law', Icon: FileText },
+            { id: 'support', label: 'Helpline', fullLabel: 'Helpline & Support', Icon: PhoneCall },
+            { id: 'incident', label: 'Reports', fullLabel: 'Incident Reporting', Icon: AlertOctagon },
+            { id: 'voting', label: 'Voting', fullLabel: 'Voting', Icon: Vote },
+          ].map(({ id, label, fullLabel, Icon }) => (
+            <button
+              key={id}
+              type="button"
+              aria-label={fullLabel}
+              aria-current={activeTab === id ? 'page' : undefined}
+              onClick={() => setActiveTab(id as typeof activeTab)}
+              className={`flex min-w-0 flex-1 flex-col items-center justify-center gap-1 px-0.5 py-2 text-[9px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-emerald-700 ${
+                activeTab === id ? 'text-emerald-900' : 'text-stone-500 hover:text-[#071F25]'
+              }`}
+            >
+              <Icon className={`h-5 w-5 ${activeTab === id ? 'text-emerald-800' : 'text-stone-400'}`} />
+              <span className="max-w-full truncate">{label}</span>
+            </button>
+          ))}
+        </div>
+      </nav>
 
       {/* Official Community Charter Modal */}
       <TermsModal isOpen={showTermsModal} onClose={() => setShowTermsModal(false)} />
