@@ -174,7 +174,44 @@ export const LoginPage: React.FC = () => {
           navigate('/pending-approval');
         }
       } else {
-        navigate('/pending-approval');
+        // Older signups may have created an Auth account before a Firestore write failed.
+        // Restore only a matching local draft, and force it to pending/member so cached
+        // client data can never grant approval or administrator privileges.
+        const cachedProfile = localStorage.getItem(`plc_member_doc_${user.uid}`);
+        if (cachedProfile) {
+          try {
+            const cached = JSON.parse(cachedProfile) as Record<string, unknown>;
+            if (cached.uid !== user.uid || typeof cached.fullName !== 'string' || typeof cached.mobile !== 'string' || typeof cached.currentLocation !== 'string' || typeof cached.idNumber !== 'string') {
+              throw new Error('The saved profile is incomplete or does not match this account.');
+            }
+            const recoveredProfile = {
+              uid: user.uid,
+              fullName: cached.fullName,
+              email: user.email || (typeof cached.email === 'string' ? cached.email : cleanEmail),
+              mobile: cached.mobile,
+              country: cached.country === 'Pakistan' ? 'Pakistan' : 'Oman',
+              currentLocation: cached.currentLocation,
+              idNumber: cached.idNumber,
+              photoURL: typeof cached.photoURL === 'string' ? cached.photoURL : '',
+              paymentReceiptURL: typeof cached.paymentReceiptURL === 'string' ? cached.paymentReceiptURL : '',
+              receiptReference: typeof cached.receiptReference === 'string' ? cached.receiptReference : '',
+              status: 'pending' as const,
+              adminNote: '',
+              registeredAt: typeof cached.registeredAt === 'string' ? cached.registeredAt : new Date().toISOString(),
+              emergencyContact: cached.emergencyContact && typeof cached.emergencyContact === 'object'
+                ? cached.emergencyContact
+                : { name: 'Next of kin', phone: cached.mobile, relation: 'Family' },
+              role: 'member' as const,
+            };
+            await setDoc(doc(db, 'members', user.uid), recoveredProfile);
+            navigate('/pending-approval');
+          } catch (recoveryError) {
+            console.error('Could not restore missing member profile:', recoveryError);
+            setErrorMessage('Your sign-in worked, but the member profile could not be restored from this device. Please contact the community administrator; your account has not been deleted.');
+          }
+        } else {
+          setErrorMessage('Your sign-in worked, but no saved member profile was found in Firebase or on this device. Your account has not been deleted; please contact the community administrator to restore your registration.');
+        }
       }
 
     } catch (err: unknown) {

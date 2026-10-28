@@ -160,14 +160,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         (snapshot) => {
           if (snapshot.exists()) {
             const data = snapshot.data();
-            const localApprovedStatus = typeof window !== 'undefined' ? localStorage.getItem(`plc_member_status_${currentUser.uid}`) : null;
-            const localMemberId = typeof window !== 'undefined' ? localStorage.getItem(`plc_member_id_${currentUser.uid}`) : null;
             setMember({
               uid: currentUser.uid,
               ...data,
               ...(isDesignatedAdmin ? { role: 'admin', status: 'approved' } : {}),
-              ...(localApprovedStatus ? { status: localApprovedStatus as MemberProfile['status'] } : {}),
-              ...(localMemberId ? { memberId: localMemberId } : {}),
             } as MemberProfile);
           } else if (isDesignatedAdmin) {
             setMember({
@@ -182,12 +178,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               if (cached) {
                 try {
                   const parsed = JSON.parse(cached);
-                  const localApprovedStatus = localStorage.getItem(`plc_member_status_${currentUser.uid}`);
-                  const localMemberId = localStorage.getItem(`plc_member_id_${currentUser.uid}`);
                   setMember({
                     ...parsed,
-                    ...(localApprovedStatus ? { status: localApprovedStatus } : {}),
-                    ...(localMemberId ? { memberId: localMemberId } : {}),
+                    status: 'pending',
+                    role: 'member',
                   });
                 } catch {
                   setMember(null);
@@ -214,13 +208,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             if (cached) {
               try {
                 const parsed = JSON.parse(cached);
-                const localApprovedStatus = localStorage.getItem(`plc_member_status_${currentUser.uid}`);
-                const localMemberId = localStorage.getItem(`plc_member_id_${currentUser.uid}`);
-                setMember({
-                  ...parsed,
-                  ...(localApprovedStatus ? { status: localApprovedStatus } : {}),
-                  ...(localMemberId ? { memberId: localMemberId } : {}),
-                });
+                setMember({ ...parsed, status: 'pending', role: 'member' });
               } catch {
                 setMember(null);
               }

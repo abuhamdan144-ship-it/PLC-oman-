@@ -52,6 +52,7 @@ export const AdminRegistrationsPage: React.FC = () => {
   
   const [members, setMembers] = useState<MemberProfile[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'pending' | 'approved' | 'rejected' | 'all'>('pending');
   const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
@@ -82,6 +83,7 @@ export const AdminRegistrationsPage: React.FC = () => {
   // Real-time listener for all members
   useEffect(() => {
     setLoading(true);
+    setLoadError(null);
     const membersColl = collection(db, 'members');
     
     const unsubscribe = onSnapshot(
@@ -96,11 +98,12 @@ export const AdminRegistrationsPage: React.FC = () => {
         });
         // Firestore is the source of truth; never re-add demo or stale cache records.
         setMembers(list);
+        setLoadError(null);
         setLoading(false);
       },
       (error) => {
         console.warn('Member registry error:', error.message);
-        setMembers([]);
+        setLoadError(`Could not load the member registry from Firebase: ${error.message}`);
         setLoading(false);
       }
     );
@@ -161,7 +164,7 @@ export const AdminRegistrationsPage: React.FC = () => {
   };
 
   // Core execution: Approve a member and assign official ID
-  const executeApproval = async (memberToApprove: MemberProfile, customNote?: string) => {
+  const executeApproval = async (memberToApprove: MemberProfile, customNote?: string): Promise<boolean> => {
     setActionProcessing(true);
     const now = new Date();
     const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -177,43 +180,7 @@ export const AdminRegistrationsPage: React.FC = () => {
 
     const note = customNote || adminNoteInput.trim() || 'Verified and approved by Community Administrator.';
 
-    // 1. Update in local storage immediately for persistent responsiveness
-    if (typeof window !== 'undefined') {
-      try {
-        localStorage.setItem(`plc_member_status_${memberToApprove.uid}`, 'approved');
-        localStorage.setItem(`plc_member_id_${memberToApprove.uid}`, generatedMemberId);
-        
-        // Also update local registered list
-        const stored = localStorage.getItem('plc_registered_members');
-        const list: MemberProfile[] = stored ? JSON.parse(stored) : [];
-        const updatedList = list.map((m) =>
-          m.uid === memberToApprove.uid
-            ? { ...m, status: 'approved' as const, memberId: generatedMemberId, approvedAt: nowIso, memberSince: memberSinceStr }
-            : m
-        );
-        localStorage.setItem('plc_registered_members', JSON.stringify(updatedList));
-      } catch (e) {
-        console.warn('Local storage write note:', e);
-      }
-    }
-
-    // 2. Update React State immediately
-    setMembers((prev) =>
-      prev.map((m) =>
-        m.uid === memberToApprove.uid
-          ? {
-              ...m,
-              status: 'approved',
-              memberId: generatedMemberId,
-              approvedAt: nowIso,
-              memberSince: memberSinceStr,
-              adminNote: note,
-            }
-          : m
-      )
-    );
-
-    // 3. Update Firestore
+    // Firestore is the source of truth: only update the UI after its write succeeds.
     try {
       const memberRef = doc(db, 'members', memberToApprove.uid);
       await setDoc(
@@ -228,6 +195,24 @@ export const AdminRegistrationsPage: React.FC = () => {
         { merge: true }
       );
 
+      setMembers((prev) =>
+        prev.map((m) =>
+          m.uid === memberToApprove.uid
+            ? { ...m, status: 'approved', memberId: generatedMemberId, approvedAt: nowIso, memberSince: memberSinceStr, adminNote: note }
+            : m
+        )
+      );
+      if (selectedMember?.uid === memberToApprove.uid) {
+        setSelectedMember({
+          ...selectedMember,
+          status: 'approved',
+          memberId: generatedMemberId,
+          approvedAt: nowIso,
+          memberSince: memberSinceStr,
+          adminNote: note,
+        });
+      }
+
       // Add Welcome notification to member's notifications subcollection
       try {
         await addDoc(collection(db, 'members', memberToApprove.uid, 'notifications'), {
@@ -240,23 +225,16 @@ export const AdminRegistrationsPage: React.FC = () => {
       } catch (notifErr) {
         console.warn('Could not add subcollection notification:', notifErr);
       }
+      showToast(`Member ${memberToApprove.fullName} has been approved with Official ID ${generatedMemberId}!`);
+      return true;
     } catch (err) {
-      console.warn('Firestore update note (saved locally):', err);
+      console.error('Could not persist member approval:', err);
+      showToast('Approval was not saved to Firebase. The member status has not been changed; please retry.', 'error');
+      return false;
     } finally {
       setActionProcessing(false);
       setActionType(null);
       setTargetMember(null);
-      if (selectedMember?.uid === memberToApprove.uid) {
-        setSelectedMember({
-          ...selectedMember,
-          status: 'approved',
-          memberId: generatedMemberId,
-          approvedAt: nowIso,
-          memberSince: memberSinceStr,
-          adminNote: note,
-        });
-      }
-      showToast(`Member ${memberToApprove.fullName} has been approved with Official ID ${generatedMemberId}!`);
     }
   };
 
@@ -277,25 +255,18 @@ export const AdminRegistrationsPage: React.FC = () => {
     setActionProcessing(true);
     const note = adminNoteInput.trim() || 'Application was not approved.';
 
-    // Update locally
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(`plc_member_status_${targetMember.uid}`, 'rejected');
-    }
-
-    setMembers((prev) =>
-      prev.map((m) => (m.uid === targetMember.uid ? { ...m, status: 'rejected', adminNote: note } : m))
-    );
-
     try {
       const memberRef = doc(db, 'members', targetMember.uid);
       await setDoc(memberRef, { status: 'rejected', adminNote: note }, { merge: true });
+      setMembers((prev) => prev.map((m) => (m.uid === targetMember.uid ? { ...m, status: 'rejected', adminNote: note } : m)));
+      showToast(`Registration for ${targetMember.fullName} was marked as declined.`);
     } catch (err) {
-      console.warn('Reject note:', err);
+      console.error('Could not persist member rejection:', err);
+      showToast('The rejection was not saved to Firebase. The member status has not been changed; please retry.', 'error');
     } finally {
       setActionProcessing(false);
       setActionType(null);
       setTargetMember(null);
-      showToast(`Registration for ${targetMember.fullName} was marked as Declined.`, 'error');
     }
   };
 
@@ -305,25 +276,18 @@ export const AdminRegistrationsPage: React.FC = () => {
     setActionProcessing(true);
     const note = adminNoteInput.trim();
 
-    // Update locally
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(`plc_member_status_${targetMember.uid}`, 'info_requested');
-    }
-
-    setMembers((prev) =>
-      prev.map((m) => (m.uid === targetMember.uid ? { ...m, status: 'info_requested', adminNote: note } : m))
-    );
-
     try {
       const memberRef = doc(db, 'members', targetMember.uid);
       await setDoc(memberRef, { status: 'info_requested', adminNote: note }, { merge: true });
+      setMembers((prev) => prev.map((m) => (m.uid === targetMember.uid ? { ...m, status: 'info_requested', adminNote: note } : m)));
+      showToast(`Clarification request sent to ${targetMember.fullName}.`);
     } catch (err) {
-      console.warn('Request info note:', err);
+      console.error('Could not persist clarification request:', err);
+      showToast('The request was not saved to Firebase. The member status has not been changed; please retry.', 'error');
     } finally {
       setActionProcessing(false);
       setActionType(null);
       setTargetMember(null);
-      showToast(`Clarification request sent to ${targetMember.fullName}.`);
     }
   };
 
@@ -333,11 +297,20 @@ export const AdminRegistrationsPage: React.FC = () => {
     if (pendingList.length === 0) return;
 
     setActionProcessing(true);
+    let approvedCount = 0;
     for (const m of pendingList) {
-      await executeApproval(m, 'Batch verified and approved by Community Administrator.');
+      if (await executeApproval(m, 'Batch verified and approved by Community Administrator.')) {
+        approvedCount += 1;
+      }
     }
     setActionProcessing(false);
-    showToast(`Successfully approved all ${pendingList.length} pending members!`);
+    const failedCount = pendingList.length - approvedCount;
+    showToast(
+      failedCount === 0
+        ? `Successfully approved all ${approvedCount} pending members.`
+        : `${approvedCount} members were approved; ${failedCount} could not be saved. Check Firebase access and retry.`,
+      failedCount === 0 ? 'success' : 'error'
+    );
   };
 
   // Quick Find & Approve from Search
@@ -492,6 +465,12 @@ export const AdminRegistrationsPage: React.FC = () => {
 
       {/* Main Container */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
+
+        {loadError && (
+          <div role="alert" className="mb-6 rounded-2xl border border-rose-300 bg-rose-50 p-4 text-sm font-semibold text-rose-950">
+            {loadError} Check that you are signed in with an administrator account authorized by Firestore rules. The registry is not being shown as empty because of this error.
+          </div>
+        )}
         
         {/* Toast Notification */}
         {toastMessage && (
