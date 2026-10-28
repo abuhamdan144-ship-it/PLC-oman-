@@ -42,8 +42,9 @@ service cloud.firestore {
 
       allow create: if isOwner(userId)
         && request.resource.data.keys().hasOnly([
-          'fullName', 'email', 'mobile', 'country', 'currentLocation', 'idNumber',
-          'photoURL', 'status', 'adminNote', 'registeredAt', 'emergencyContact', 'role'
+          'uid', 'fullName', 'email', 'mobile', 'country', 'currentLocation', 'idNumber',
+          'photoURL', 'paymentReceiptURL', 'receiptReference', 'status', 'adminNote',
+          'registeredAt', 'emergencyContact', 'role'
         ])
         && request.resource.data.status == 'pending'
         && request.resource.data.role == 'member';
