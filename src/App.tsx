@@ -28,7 +28,7 @@ const RootRedirector: React.FC = () => {
   const { user, member, loading } = useAuth();
 
   if (loading) return <LoadingSkeleton message="Connecting to Pakistan Labour Community..." />;
-  if (!user) return <Navigate to="/register" replace />;
+  if (!user) return <Navigate to="/login" replace />;
   if (member?.role === 'admin') return <Navigate to="/admin/registrations" replace />;
   if (member?.status === 'approved') return <Navigate to="/member" replace />;
   return <Navigate to="/pending-approval" replace />;

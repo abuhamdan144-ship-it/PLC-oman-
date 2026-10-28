@@ -1,0 +1,27 @@
+{
+  "id": "/",
+  "name": "Pakistan Labour Community Member Portal",
+  "short_name": "PLC Oman",
+  "description": "Member sign-in, digital membership card, voting, emergency contacts, and community support for Pakistan Labour Community Oman.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "portrait-primary",
+  "background_color": "#F9F7F2",
+  "theme_color": "#071F25",
+  "icons": [
+    {
+      "src": "/assets/plc-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/plc-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

@@ -2,7 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { 
   signInWithEmailAndPassword, 
-  sendPasswordResetEmail
+  sendPasswordResetEmail,
+  browserLocalPersistence,
+  browserSessionPersistence,
+  setPersistence,
 } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
@@ -35,6 +38,7 @@ export const LoginPage: React.FC = () => {
   // Form inputs for Member
   const [memberEmail, setMemberEmail] = useState('');
   const [memberPassword, setMemberPassword] = useState('');
+  const [rememberMemberOnDevice, setRememberMemberOnDevice] = useState(true);
 
   // Form inputs for Admin
   const [adminUsername, setAdminUsername] = useState('');
@@ -71,6 +75,7 @@ export const LoginPage: React.FC = () => {
       // Authenticate with Firebase Auth before granting access to Firestore-backed tools.
       let authUser = null;
       try {
+        await setPersistence(auth, browserSessionPersistence);
         const userCred = await signInWithEmailAndPassword(auth, cleanEmail, passInput);
         authUser = userCred.user;
       } catch (authErr: unknown) {
@@ -146,6 +151,10 @@ export const LoginPage: React.FC = () => {
     setIsLoading(true);
 
     try {
+      await setPersistence(
+        auth,
+        rememberMemberOnDevice ? browserLocalPersistence : browserSessionPersistence
+      );
       const userCredential = await signInWithEmailAndPassword(auth, cleanEmail, memberPassword);
       const user = userCredential.user;
 
@@ -431,7 +440,7 @@ export const LoginPage: React.FC = () => {
                       value={memberEmail}
                       onChange={(e) => setMemberEmail(e.target.value)}
                       placeholder="name@example.com"
-                      autoComplete="email"
+                      autoComplete="username"
                       className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-stone-300 text-sm text-[#071F25] placeholder:text-stone-400 focus:outline-hidden focus:ring-2 focus:ring-[#0D5A31]"
                     />
                   </div>
@@ -468,6 +477,19 @@ export const LoginPage: React.FC = () => {
                   </div>
                 </div>
 
+                <label className="flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50/70 p-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={rememberMemberOnDevice}
+                    onChange={(e) => setRememberMemberOnDevice(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 accent-[#0D5A31]"
+                  />
+                  <span className="text-xs text-stone-700">
+                    <span className="block font-bold text-[#071F25]">Keep me signed in on this phone</span>
+                    <span className="mt-0.5 block">Use this only on your personal device. Your browser may offer to securely save your login; PLC never stores your password.</span>
+                  </span>
+                </label>
+
                 <div className="pt-2">
                   <button
                     type="submit"
@@ -500,6 +522,10 @@ export const LoginPage: React.FC = () => {
                     </Link>
                   </p>
                 </div>
+
+                <p className="text-center text-[11px] leading-relaxed text-stone-500">
+                  Use PLC like an app: on iPhone tap <strong>Share → Add to Home Screen</strong>; on Android open your browser menu and choose <strong>Install app</strong> or <strong>Add to Home screen</strong>.
+                </p>
 
               </form>
             )}

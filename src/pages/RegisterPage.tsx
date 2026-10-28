@@ -624,6 +624,7 @@ export const RegisterPage: React.FC = () => {
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       placeholder="name@example.com"
+                      autoComplete="email"
                       className={`w-full pl-9 pr-3 py-2.5 rounded-xl border text-sm text-[#071F25] placeholder:text-stone-400 focus:outline-hidden focus:ring-2 focus:ring-[#0D5A31] transition-colors ${
                         fieldErrors.email ? 'border-rose-400 bg-rose-50/20' : 'border-stone-300'
                       }`}
@@ -784,6 +785,7 @@ export const RegisterPage: React.FC = () => {
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder="Minimum 8 characters"
+                      autoComplete="new-password"
                       className={`w-full pl-9 pr-3 py-2.5 rounded-xl border text-sm text-[#071F25] placeholder:text-stone-400 focus:outline-hidden focus:ring-2 focus:ring-[#0D5A31] transition-colors ${
                         fieldErrors.password ? 'border-rose-400 bg-rose-50/20' : 'border-stone-300'
                       }`}
@@ -807,6 +809,7 @@ export const RegisterPage: React.FC = () => {
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
                       placeholder="Repeat password"
+                      autoComplete="new-password"
                       className={`w-full pl-9 pr-3 py-2.5 rounded-xl border text-sm text-[#071F25] placeholder:text-stone-400 focus:outline-hidden focus:ring-2 focus:ring-[#0D5A31] transition-colors ${
                         fieldErrors.confirmPassword ? 'border-rose-400 bg-rose-50/20' : 'border-stone-300'
                       }`}
