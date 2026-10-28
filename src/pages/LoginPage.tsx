@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { 
   signInWithEmailAndPassword, 
-  createUserWithEmailAndPassword,
   sendPasswordResetEmail
 } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
@@ -39,8 +38,8 @@ export const LoginPage: React.FC = () => {
   const [memberPassword, setMemberPassword] = useState('');
 
   // Form inputs for Admin
-  const [adminUsername, setAdminUsername] = useState('PLC@community.com');
-  const [adminPassword, setAdminPassword] = useState('11223344');
+  const [adminUsername, setAdminUsername] = useState('');
+  const [adminPassword, setAdminPassword] = useState('');
 
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -67,11 +66,7 @@ export const LoginPage: React.FC = () => {
     setIsLoading(true);
     setErrorMessage(null);
 
-    // Normalize input (support 'admin', 'plc', or email)
-    let cleanEmail = emailInput.trim();
-    if (cleanEmail.toLowerCase() === 'admin' || cleanEmail.toLowerCase() === 'plc') {
-      cleanEmail = 'PLC@community.com';
-    }
+    const cleanEmail = emailInput.trim();
 
     try {
       // Authenticate with Firebase Auth before granting access to Firestore-backed tools.
@@ -84,17 +79,7 @@ export const LoginPage: React.FC = () => {
           ? (authErr as { code: string }).code 
           : '';
         
-        // If user account is not found in Firebase Auth, automatically create it with these admin credentials
-        if (errCode === 'auth/user-not-found' || errCode === 'auth/invalid-credential') {
-          try {
-            const newCred = await createUserWithEmailAndPassword(auth, cleanEmail, passInput);
-            authUser = newCred.user;
-          } catch (createErr) {
-            console.warn('Auto provision notice:', createErr);
-          }
-        } else {
-          console.warn('Admin sign-in notice:', authErr);
-        }
+        console.warn('Admin sign-in notice:', authErr);
       }
 
       if (!authUser) {
@@ -352,7 +337,7 @@ export const LoginPage: React.FC = () => {
                         required
                         value={adminUsername}
                         onChange={(e) => setAdminUsername(e.target.value)}
-                        placeholder="PLC@community.com"
+                        placeholder="Enter administrator email"
                         className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-stone-300 text-sm font-semibold text-[#071F25] focus:outline-hidden focus:ring-2 focus:ring-[#071F25]"
                       />
                     </div>
@@ -370,7 +355,7 @@ export const LoginPage: React.FC = () => {
                         required
                         value={adminPassword}
                         onChange={(e) => setAdminPassword(e.target.value)}
-                        placeholder="11223344"
+                        placeholder="Enter administrator password"
                         className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-stone-300 text-sm font-semibold text-[#071F25] focus:outline-hidden focus:ring-2 focus:ring-[#071F25]"
                       />
                     </div>
