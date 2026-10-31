@@ -26,7 +26,7 @@ export const InstallAppButton: React.FC = () => {
         aria-label="Install PLC on this device"
       >
         <Download className="h-4 w-4" />
-        <span>{canInstall ? 'Install PLC on this phone' : isAndroid ? 'Add PLC to Home Screen' : 'Install PLC on this phone'}</span>
+        <span>{canInstall ? 'PLC موبائل میں انسٹال کریں' : isAndroid ? 'PLC ہوم اسکرین پر شامل کریں' : 'PLC موبائل میں انسٹال کریں'}</span>
       </button>
 
       {showInstructions && (
@@ -42,21 +42,21 @@ export const InstallAppButton: React.FC = () => {
             </button>
 
             <div className="mb-5 pr-6">
-              <p className="mb-1 text-[11px] font-bold uppercase tracking-[0.18em] text-[#0D5A31]">Use PLC like an app</p>
-              <h2 id="install-help-title" className="font-heading text-xl font-bold text-[#071F25]">Add PLC to your Home Screen</h2>
+              <p className="mb-1 text-[11px] font-bold text-[#0D5A31]">PLC کو ایپ کی طرح استعمال کریں</p>
+              <h2 id="install-help-title" className="font-heading text-xl font-bold text-[#071F25]">PLC ہوم اسکرین پر شامل کریں</h2>
               <p className="mt-2 text-xs leading-relaxed text-stone-600">
-                {isAndroid ? 'Tap the browser menu once, then choose Install app or Add to Home screen.' : 'Use your browser menu once to add PLC to your Home Screen.'}
+                {isAndroid ? 'براہ کرم براؤزر کا مینو کھولیں، پھر Install app یا Add to Home screen دبائیں۔' : 'براؤزر کے مینو سے PLC کو موبائل کی ہوم اسکرین پر شامل کریں۔'}
               </p>
             </div>
 
             <div className="space-y-3 text-xs text-stone-700">
               <div className="flex gap-3 rounded-xl bg-emerald-50 p-3">
                 <MoreVertical className="mt-0.5 h-5 w-5 shrink-0 text-[#0D5A31]" />
-                <p><strong className="text-[#071F25]">Android:</strong> open your browser menu, then choose <strong>Install app</strong> or <strong>Add to Home screen</strong>.</p>
+                <p dir="rtl"><strong className="text-[#071F25]">Android:</strong> براؤزر کا مینو کھولیں، پھر <strong>Install app</strong> یا <strong>Add to Home screen</strong> دبائیں۔</p>
               </div>
               <div className="flex gap-3 rounded-xl bg-amber-50 p-3">
                 <Share2 className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
-                <p><strong className="text-[#071F25]">iPhone:</strong> tap <strong>Share</strong>, then choose <strong>Add to Home Screen</strong>.</p>
+                <p dir="rtl"><strong className="text-[#071F25]">iPhone:</strong> <strong>Share</strong> دبائیں، پھر <strong>Add to Home Screen</strong> منتخب کریں۔</p>
               </div>
             </div>
 
@@ -65,7 +65,7 @@ export const InstallAppButton: React.FC = () => {
               onClick={() => setShowInstructions(false)}
               className="mt-5 w-full rounded-xl bg-[#071F25] px-4 py-2.5 text-xs font-bold text-white transition-colors hover:bg-[#0e3b46]"
             >
-              Got it
+              سمجھ گیا
             </button>
           </div>
         </div>

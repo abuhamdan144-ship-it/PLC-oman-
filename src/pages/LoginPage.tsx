@@ -313,8 +313,8 @@ export const LoginPage: React.FC = () => {
             {!isAdminLogin && (
               <div className="mb-5 flex items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-3.5">
                 <div className="min-w-0">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-800">Community Helpline</p>
-                  <p className="mt-0.5 text-xs font-semibold text-[#071F25]">Bacha G · +968 9676 6876</p>
+                  <p className="text-[10px] font-bold text-emerald-800" dir="rtl">کمیونٹی ہیلپ لائن</p>
+                  <p className="mt-0.5 text-xs font-semibold text-[#071F25]" dir="rtl">Bacha G · +968 9676 6876</p>
                 </div>
                 <a
                   href="tel:+96896766876"
@@ -322,7 +322,7 @@ export const LoginPage: React.FC = () => {
                   aria-label="Call Bacha G community helpline"
                 >
                   <PhoneCall className="h-3.5 w-3.5" />
-                  Call
+                  کال کریں
                 </a>
               </div>
             )}
@@ -498,13 +498,13 @@ export const LoginPage: React.FC = () => {
 
                 {/* Quick Register Link */}
                 <div className="mt-6 border-t border-stone-200 pt-5">
-                  <p className="mb-2 text-center text-xs text-stone-600">Not registered yet?</p>
+                  <p className="mb-2 text-center text-xs text-stone-600" dir="rtl">ابھی رجسٹر نہیں کیا؟</p>
                   <Link
                     to="/register"
                     className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-[#E4AE2F] bg-[#FFF8E8] px-4 py-3 text-sm font-extrabold text-[#071F25] shadow-sm transition-colors hover:bg-amber-100 focus:outline-hidden focus:ring-2 focus:ring-[#E4AE2F] focus:ring-offset-2"
                   >
                     <UserPlus className="h-4 w-4 text-[#0D5A31]" />
-                    <span>Register as a New Member</span>
+                    <span dir="rtl">نئے ممبر کے طور پر رجسٹر کریں</span>
                   </Link>
                 </div>
 
