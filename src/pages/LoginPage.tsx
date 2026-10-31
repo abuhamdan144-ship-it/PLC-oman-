@@ -13,6 +13,7 @@ import { auth, db } from '../lib/firebase';
 import { isPlcAdminEmail } from '../hooks/useAuth';
 import { PakistanLabourCommunityLogo } from '../lib/logo';
 import { FlagPair } from '../lib/flags';
+import { InstallAppButton } from '../components/InstallAppButton';
 import { 
   Mail, 
   Lock, 
@@ -470,6 +471,8 @@ export const LoginPage: React.FC = () => {
                   </button>
                 </div>
 
+                <InstallAppButton />
+
                 {/* Quick Register Link */}
                 <div className="mt-6 pt-5 border-t border-stone-200 text-center">
                   <p className="text-xs text-stone-600">
@@ -482,10 +485,6 @@ export const LoginPage: React.FC = () => {
                     </Link>
                   </p>
                 </div>
-
-                <p className="text-center text-[11px] leading-relaxed text-stone-500">
-                  Use PLC like an app: on iPhone tap <strong>Share → Add to Home Screen</strong>; on Android open your browser menu and choose <strong>Install app</strong> or <strong>Add to Home screen</strong>.
-                </p>
 
               </form>
             )}
