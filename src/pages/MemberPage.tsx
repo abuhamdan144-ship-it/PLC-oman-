@@ -851,7 +851,7 @@ export const MemberPage: React.FC = () => {
             </p>
 
             <div className="mb-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
-              <h3 className="text-xs font-bold text-emerald-950">Community Finance / Help Line</h3>
+              <h3 className="text-xs font-bold text-emerald-950">Community Helpline — Bacha G</h3>
               <a href="tel:+96896766876" className="mt-1 inline-block font-mono text-sm font-bold text-emerald-900">+968 9676 6876</a>
               <p className="mt-1 text-[10px] text-emerald-900">WhatsApp and call support · Fund account: <strong>96766876</strong></p>
             </div>

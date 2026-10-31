@@ -76,6 +76,10 @@ export const Footer: React.FC = () => {
                 <span>فنڈ اکاؤنٹ / Fund Account:</span>
                 <span className="font-mono text-emerald-300 font-bold">96766876</span>
               </li>
+              <li className="flex items-center gap-1.5 text-[11px] text-stone-300">
+                <span>Community Helpline (Bacha G):</span>
+                <a href="tel:+96896766876" className="font-mono font-bold text-emerald-300 hover:text-emerald-200">+968 9676 6876</a>
+              </li>
               <li className="flex items-center gap-1.5">
                 <MapPin className="w-3.5 h-3.5 text-stone-400 shrink-0" />
                 <span>Consular Support & Passport Desk</span>

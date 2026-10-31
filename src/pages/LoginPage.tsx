@@ -23,7 +23,9 @@ import {
   KeyRound, 
   X,
   ShieldCheck,
-  Check
+  Check,
+  PhoneCall,
+  UserPlus
 } from 'lucide-react';
 
 export const LoginPage: React.FC = () => {
@@ -302,6 +304,23 @@ export const LoginPage: React.FC = () => {
               </div>
             )}
 
+            {!isAdminLogin && (
+              <div className="mb-5 flex items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-3.5">
+                <div className="min-w-0">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-800">Community Helpline</p>
+                  <p className="mt-0.5 text-xs font-semibold text-[#071F25]">Bacha G · +968 9676 6876</p>
+                </div>
+                <a
+                  href="tel:+96896766876"
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[#0D5A31] px-3 py-2 text-[11px] font-bold text-white transition-colors hover:bg-[#0a4626]"
+                  aria-label="Call Bacha G community helpline"
+                >
+                  <PhoneCall className="h-3.5 w-3.5" />
+                  Call
+                </a>
+              </div>
+            )}
+
             {isAdminLogin && (
               <div className="space-y-4">
                 
@@ -474,16 +493,15 @@ export const LoginPage: React.FC = () => {
                 <InstallAppButton />
 
                 {/* Quick Register Link */}
-                <div className="mt-6 pt-5 border-t border-stone-200 text-center">
-                  <p className="text-xs text-stone-600">
-                    Not registered yet?{' '}
-                    <Link
-                      to="/register"
-                      className="font-bold text-[#0D5A31] hover:text-[#071F25] underline ml-1"
-                    >
-                      Join Pakistan Labour Community
-                    </Link>
-                  </p>
+                <div className="mt-6 border-t border-stone-200 pt-5">
+                  <p className="mb-2 text-center text-xs text-stone-600">Not registered yet?</p>
+                  <Link
+                    to="/register"
+                    className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-[#E4AE2F] bg-[#FFF8E8] px-4 py-3 text-sm font-extrabold text-[#071F25] shadow-sm transition-colors hover:bg-amber-100 focus:outline-hidden focus:ring-2 focus:ring-[#E4AE2F] focus:ring-offset-2"
+                  >
+                    <UserPlus className="h-4 w-4 text-[#0D5A31]" />
+                    <span>Register as a New Member</span>
+                  </Link>
                 </div>
 
               </form>
