@@ -291,6 +291,12 @@ export const LoginPage: React.FC = () => {
 
           <div className="p-6 sm:p-8">
 
+            {!isAdminLogin && (
+              <div className="mb-5">
+                <InstallAppButton />
+              </div>
+            )}
+
             {errorMessage && (
               <div 
                 role="alert"
@@ -489,8 +495,6 @@ export const LoginPage: React.FC = () => {
                     )}
                   </button>
                 </div>
-
-                <InstallAppButton />
 
                 {/* Quick Register Link */}
                 <div className="mt-6 border-t border-stone-200 pt-5">

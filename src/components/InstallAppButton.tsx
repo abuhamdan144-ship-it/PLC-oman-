@@ -5,6 +5,7 @@ import { useInstallPrompt } from '../hooks/useInstallPrompt';
 export const InstallAppButton: React.FC = () => {
   const { canInstall, isInstalled, install } = useInstallPrompt();
   const [showInstructions, setShowInstructions] = useState(false);
+  const isAndroid = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent);
 
   if (isInstalled) return null;
 
@@ -21,11 +22,11 @@ export const InstallAppButton: React.FC = () => {
       <button
         type="button"
         onClick={handleInstall}
-        className="inline-flex items-center justify-center gap-2 w-full rounded-xl border border-[#0D5A31] bg-emerald-50 px-4 py-2.5 text-xs font-bold text-[#0D5A31] transition-colors hover:bg-emerald-100 focus:outline-hidden focus:ring-2 focus:ring-[#0D5A31] focus:ring-offset-2"
+        className="inline-flex items-center justify-center gap-2 w-full rounded-xl border-2 border-[#E4AE2F] bg-[#FFF8E8] px-4 py-3 text-sm font-extrabold text-[#071F25] shadow-sm transition-colors hover:bg-amber-100 focus:outline-hidden focus:ring-2 focus:ring-[#E4AE2F] focus:ring-offset-2"
         aria-label="Install PLC on this device"
       >
         <Download className="h-4 w-4" />
-        <span>{canInstall ? 'Add PLC to Home Screen' : 'How to Add PLC to Home Screen'}</span>
+        <span>{canInstall ? 'Install PLC on this phone' : isAndroid ? 'Add PLC to Home Screen' : 'Install PLC on this phone'}</span>
       </button>
 
       {showInstructions && (
@@ -44,7 +45,7 @@ export const InstallAppButton: React.FC = () => {
               <p className="mb-1 text-[11px] font-bold uppercase tracking-[0.18em] text-[#0D5A31]">Use PLC like an app</p>
               <h2 id="install-help-title" className="font-heading text-xl font-bold text-[#071F25]">Add PLC to your Home Screen</h2>
               <p className="mt-2 text-xs leading-relaxed text-stone-600">
-                Your browser does not show the automatic install prompt here, so use the browser menu once.
+                {isAndroid ? 'Tap the browser menu once, then choose Install app or Add to Home screen.' : 'Use your browser menu once to add PLC to your Home Screen.'}
               </p>
             </div>
 
