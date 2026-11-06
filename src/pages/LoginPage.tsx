@@ -4,12 +4,15 @@ import {
   signInWithEmailAndPassword, 
   signOut,
   sendPasswordResetEmail,
+  updateEmail,
   browserLocalPersistence,
   browserSessionPersistence,
   setPersistence,
 } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
+import { isInternalMemberAuthEmail, memberAuthEmailFromMobile, normalizeMemberMobile } from '../lib/memberLogin';
+import type { MemberCountry } from '../types';
 import { isPlcAdminEmail } from '../hooks/useAuth';
 import { PakistanLabourCommunityLogo } from '../lib/logo';
 import { FlagPair } from '../lib/flags';
@@ -17,6 +20,7 @@ import { InstallAppButton } from '../components/InstallAppButton';
 import { 
   Mail, 
   Lock, 
+  Phone,
   ArrowRight, 
   AlertCircle, 
   CheckCircle2, 
@@ -35,7 +39,10 @@ export const LoginPage: React.FC = () => {
   // Keep the member and administrator sign-in routes separate.
   const isAdminLogin = location.pathname === '/admin/login';
 
-  // Form inputs for Member
+  // Mobile number is the default member username. Legacy email sign-in stays available temporarily.
+  const [memberMobile, setMemberMobile] = useState('');
+  const [memberCountry, setMemberCountry] = useState<MemberCountry>('Oman');
+  const [legacyMemberLogin, setLegacyMemberLogin] = useState(false);
   const [memberEmail, setMemberEmail] = useState('');
   const [memberPassword, setMemberPassword] = useState('');
   const [rememberMemberOnDevice, setRememberMemberOnDevice] = useState(true);
@@ -131,8 +138,12 @@ export const LoginPage: React.FC = () => {
     setErrorMessage(null);
 
     const cleanEmail = memberEmail.trim();
-    if (!cleanEmail || !memberPassword) {
-      setErrorMessage('Please enter both email and password.');
+    const normalizedMobile = legacyMemberLogin ? null : normalizeMemberMobile(memberMobile, memberCountry);
+    const authEmail = legacyMemberLogin ? cleanEmail : (normalizedMobile ? memberAuthEmailFromMobile(normalizedMobile, memberCountry) : null);
+    if (!authEmail || !memberPassword) {
+      setErrorMessage(legacyMemberLogin
+        ? 'Please enter your old registered email and password.'
+        : 'Enter a valid mobile number and your password. Use +968 / +92 or select the correct country.');
       return;
     }
 
@@ -143,7 +154,7 @@ export const LoginPage: React.FC = () => {
         auth,
         rememberMemberOnDevice ? browserLocalPersistence : browserSessionPersistence
       );
-      const userCredential = await signInWithEmailAndPassword(auth, cleanEmail, memberPassword);
+      const userCredential = await signInWithEmailAndPassword(auth, authEmail, memberPassword);
       const user = userCredential.user;
 
       // Check member profile document
@@ -157,6 +168,22 @@ export const LoginPage: React.FC = () => {
         if (role === 'admin') {
           setErrorMessage('This account is configured for the administrator portal, not as a member profile. Use a member account to view a membership card, voting, emergency contacts, and reports.');
           return;
+        }
+
+        // A successful legacy sign-in migrates the Auth username to the member's phone alias.
+        // If Firebase refuses the update, the session remains usable via the legacy option.
+        if (legacyMemberLogin) {
+          const countryForAlias: MemberCountry = memberData.country === 'Pakistan' ? 'Pakistan' : 'Oman';
+          const mobileAlias = memberAuthEmailFromMobile(String(memberData.mobile || ''), countryForAlias);
+          if (mobileAlias && user.email?.toLowerCase() !== mobileAlias.toLowerCase()) {
+            try {
+              await updateEmail(user, mobileAlias);
+              sessionStorage.setItem('plc_mobile_login_migrated', '1');
+            } catch (migrationError) {
+              console.warn('Signed in, but automatic mobile-username migration did not finish:', migrationError);
+              sessionStorage.setItem('plc_mobile_login_migration_pending', '1');
+            }
+          }
         }
 
         if (status === 'approved') {
@@ -178,7 +205,9 @@ export const LoginPage: React.FC = () => {
             const recoveredProfile = {
               uid: user.uid,
               fullName: cached.fullName,
-              email: user.email || (typeof cached.email === 'string' ? cached.email : cleanEmail),
+              email: !isInternalMemberAuthEmail(user.email)
+                ? (user.email || (typeof cached.email === 'string' ? cached.email : cleanEmail))
+                : (typeof cached.email === 'string' ? cached.email : ''),
               mobile: cached.mobile,
               country: cached.country === 'Pakistan' ? 'Pakistan' : 'Oman',
               currentLocation: cached.currentLocation,
@@ -207,12 +236,16 @@ export const LoginPage: React.FC = () => {
 
     } catch (err: unknown) {
       console.error('Member sign in failed:', err);
-      let msg = 'Failed to sign in. Please verify your email and password.';
+      let msg = legacyMemberLogin
+        ? 'Invalid email or password. Please verify your old account details.'
+        : 'Invalid mobile number or password. Please check the number and try again.';
       const code = (typeof err === 'object' && err !== null && 'code' in err) ? (err as { code: string }).code : '';
       if (code === 'auth/operation-not-allowed') {
-        msg = 'Email/Password sign-in is disabled. Please verify your settings.';
+        msg = 'Member sign-in is not enabled. Please contact the community administrator.';
       } else if (code === 'auth/user-not-found' || code === 'auth/wrong-password' || code === 'auth/invalid-credential') {
-        msg = 'Invalid email or password. Please verify your credentials and try again.';
+        msg = legacyMemberLogin
+          ? 'Invalid old email or password. Please verify your credentials.'
+          : 'Invalid mobile number or password. If your account is older, choose “Existing account” and sign in once with your old email.';
       } else if (code === 'auth/too-many-requests') {
         msg = 'Access temporarily suspended due to multiple attempts. Please wait a moment.';
       } else if (typeof err === 'object' && err !== null && 'message' in err) {
@@ -413,40 +446,44 @@ export const LoginPage: React.FC = () => {
             {!isAdminLogin && (
               <form onSubmit={handleMemberSubmit} className="space-y-4">
                 
-                <div>
-                  <label htmlFor="login-email" className="block text-xs font-bold text-[#071F25] mb-1">
-                    Registered Email Address
-                  </label>
-                  <div className="relative">
-                    <Mail className="w-4 h-4 text-stone-400 absolute left-3 top-3 pointer-events-none" />
-                    <input
-                      id="login-email"
-                      type="email"
-                      required
-                      value={memberEmail}
-                      onChange={(e) => setMemberEmail(e.target.value)}
-                      placeholder="name@example.com"
-                      autoComplete="username"
-                      className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-stone-300 text-sm text-[#071F25] placeholder:text-stone-400 focus:outline-hidden focus:ring-2 focus:ring-[#0D5A31]"
-                    />
+                {legacyMemberLogin ? (
+                  <div>
+                    <label htmlFor="login-email" className="block text-xs font-bold text-[#071F25] mb-1">Old Registered Email (existing accounts only)</label>
+                    <div className="relative">
+                      <Mail className="w-4 h-4 text-stone-400 absolute left-3 top-3 pointer-events-none" />
+                      <input id="login-email" type="email" required value={memberEmail} onChange={(e) => setMemberEmail(e.target.value)} placeholder="name@example.com" autoComplete="username" className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-stone-300 text-sm text-[#071F25] placeholder:text-stone-400 focus:outline-hidden focus:ring-2 focus:ring-[#0D5A31]" />
+                    </div>
+                    <p className="mt-1 text-[11px] text-stone-500">After sign-in, PLC will try to switch your username to your registered mobile number. Keep the same password.</p>
+                    <button type="button" onClick={() => { setLegacyMemberLogin(false); setErrorMessage(null); }} className="mt-2 text-xs font-bold text-[#0D5A31] underline">Use mobile number instead</button>
                   </div>
-                </div>
+                ) : (
+                  <div>
+                    <label htmlFor="login-mobile" className="block text-xs font-bold text-[#071F25] mb-1">Mobile Number — Your Username</label>
+                    <div className="grid grid-cols-[120px_1fr] gap-2">
+                      <select id="login-country-code" value={memberCountry} onChange={(e) => setMemberCountry(e.target.value as MemberCountry)} aria-label="Mobile country code" className="rounded-xl border border-stone-300 bg-white px-2 py-2.5 text-xs font-semibold text-[#071F25] focus:outline-hidden focus:ring-2 focus:ring-[#0D5A31]">
+                        <option value="Oman">Oman +968</option>
+                        <option value="Pakistan">Pakistan +92</option>
+                      </select>
+                      <div className="relative">
+                        <Phone className="w-4 h-4 text-stone-400 absolute left-3 top-3 pointer-events-none" />
+                        <input id="login-mobile" type="tel" inputMode="tel" required value={memberMobile} onChange={(e) => setMemberMobile(e.target.value)} placeholder="Mobile number" autoComplete="username" className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-stone-300 text-sm text-[#071F25] placeholder:text-stone-400 focus:outline-hidden focus:ring-2 focus:ring-[#0D5A31]" />
+                      </div>
+                    </div>
+                    <p className="mt-1 text-[11px] text-stone-500">Enter your mobile number. You do not need an email address.</p>
+                    <button type="button" onClick={() => { setLegacyMemberLogin(true); setErrorMessage(null); }} className="mt-2 text-xs font-bold text-[#0D5A31] underline">Existing account? Use old email once</button>
+                  </div>
+                )}
 
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label htmlFor="login-password" className="text-xs font-bold text-[#071F25]">
                       Password
                     </label>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setResetEmail(memberEmail);
-                        setShowForgotModal(true);
-                      }}
-                      className="text-xs font-semibold text-[#0D5A31] hover:underline"
-                    >
-                      Forgot password?
-                    </button>
+                    {legacyMemberLogin ? (
+                      <button type="button" onClick={() => { setResetEmail(memberEmail); setShowForgotModal(true); }} className="text-xs font-semibold text-[#0D5A31] hover:underline">Forgot password?</button>
+                    ) : (
+                      <a href={`https://wa.me/96896766876?text=${encodeURIComponent(`I forgot my PLC password. My mobile number is ${memberMobile.trim() || 'not entered'}.`)}`} target="_blank" rel="noreferrer" className="text-xs font-semibold text-[#0D5A31] hover:underline">Forgot password? WhatsApp admin</a>
+                    )}
                   </div>
                   <div className="relative">
                     <Lock className="w-4 h-4 text-stone-400 absolute left-3 top-3 pointer-events-none" />

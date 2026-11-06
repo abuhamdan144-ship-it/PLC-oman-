@@ -4,6 +4,7 @@ import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { auth, db, storage } from '../lib/firebase';
+import { memberAuthEmailFromMobile, normalizeMemberMobile } from '../lib/memberLogin';
 import { PakistanLabourCommunityLogo } from '../lib/logo';
 import { FlagPair } from '../lib/flags';
 import { compressImage, compressImageToDataUrl } from '../lib/imageCompressor';
@@ -12,7 +13,6 @@ import { SAMPLE_MEMBER_PENDING } from '../lib/seed';
 import { TermsModal } from '../components/TermsModal';
 import { 
   User, 
-  Mail, 
   Phone, 
   Lock, 
   MapPin, 
@@ -45,8 +45,8 @@ export const RegisterPage: React.FC = () => {
 
   // Form Fields
   const [fullName, setFullName] = useState('');
-  const [email, setEmail] = useState('');
   const [mobile, setMobile] = useState('');
+  const [mobileCountryCode, setMobileCountryCode] = useState<MemberCountry>('Oman');
   const [country, setCountry] = useState<MemberCountry>('Oman');
   const [currentLocation, setCurrentLocation] = useState('');
   const [idNumber, setIdNumber] = useState('');
@@ -112,7 +112,6 @@ export const RegisterPage: React.FC = () => {
     const nameText = fullName.trim() || 'ممبر';
     const cnicText = idNumber.trim() || 'فارم میں درج ہے';
     const mobileText = mobile.trim() || 'فارم میں درج ہے';
-    const emailText = email.trim() || 'فارم میں درج ہے';
     const locationText = currentLocation.trim() || country;
     const refText = receiptReference.trim() ? `\nرسید / ٹرانزیکشن نمبر: ${receiptReference.trim()}` : '';
 
@@ -123,7 +122,6 @@ export const RegisterPage: React.FC = () => {
 نام: ${nameText}
 شناختی کارڈ / پاسپورٹ: ${cnicText}
 موبائل فون: ${mobileText}
-ای میل: ${emailText}
 شہر / ولایت: ${locationText}
 تنظیم اکاؤنٹ نمبر: 96766876${refText}
 
@@ -135,8 +133,8 @@ export const RegisterPage: React.FC = () => {
 
   const handleFillDemo = () => {
     setFullName(SAMPLE_MEMBER_PENDING.fullName);
-    setEmail(`bilal.sample_${Math.floor(1000 + Math.random() * 9000)}@example.com`);
     setMobile(SAMPLE_MEMBER_PENDING.mobile);
+    setMobileCountryCode(SAMPLE_MEMBER_PENDING.country);
     setCountry(SAMPLE_MEMBER_PENDING.country);
     setCurrentLocation(SAMPLE_MEMBER_PENDING.currentLocation);
     setIdNumber(SAMPLE_MEMBER_PENDING.idNumber);
@@ -155,13 +153,10 @@ export const RegisterPage: React.FC = () => {
       errors.fullName = 'Please enter your full official name (as on CNIC/Passport).';
     }
 
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!email.trim() || !emailRegex.test(email.trim())) {
-      errors.email = 'Please enter a valid email address.';
-    }
-
-    if (!mobile.trim() || mobile.trim().length < 7) {
-      errors.mobile = 'Please enter a valid contact phone number with country code.';
+    if (!normalizeMemberMobile(mobile, mobileCountryCode)) {
+      errors.mobile = mobileCountryCode === 'Oman'
+        ? 'Enter an Oman mobile number with 8 digits, or include its country code (+968).'
+        : 'Enter a Pakistan mobile number with 10 digits, or include its country code (+92).';
     }
 
     if (!currentLocation.trim()) {
@@ -201,8 +196,11 @@ export const RegisterPage: React.FC = () => {
     try {
       // Save a small membership-card thumbnail in Firestore; no Storage bucket is required.
       const photoURL = photoFile ? await compressImageToDataUrl(photoFile, 32 * 1024, 320) : '';
+      const normalizedMobile = normalizeMemberMobile(mobile, mobileCountryCode);
+      const authEmail = memberAuthEmailFromMobile(mobile, mobileCountryCode);
+      if (!normalizedMobile || !authEmail) throw new Error('Enter a valid mobile number with country code.');
       // 1. Create Firebase Auth user
-      const userCredential = await createUserWithEmailAndPassword(auth, email.trim(), password);
+      const userCredential = await createUserWithEmailAndPassword(auth, authEmail, password);
       const user = userCredential.user;
 
       // 2b. Upload payment receipt if selected
@@ -227,8 +225,8 @@ export const RegisterPage: React.FC = () => {
       const newMemberDoc = {
         uid: user.uid,
         fullName: fullName.trim(),
-        email: email.trim().toLowerCase(),
-        mobile: mobile.trim(),
+        email: '',
+        mobile: normalizedMobile,
         country,
         currentLocation: currentLocation.trim(),
         idNumber: idNumber.trim(),
@@ -240,15 +238,14 @@ export const RegisterPage: React.FC = () => {
         registeredAt: nowIso,
         emergencyContact: {
           name: emergencyName.trim() || 'Next of kin',
-          phone: emergencyPhone.trim() || mobile.trim(),
+          phone: emergencyPhone.trim() || normalizedMobile,
           relation: 'Family'
         },
         role: 'member' as const
       };
 
-      await setDoc(memberDocRef, newMemberDoc);
-
-      // Cache locally so Admin Dashboard and current session immediately have access
+      // Cache first so a newly created mobile-login account can recover its profile
+      // on this device if the network or Firestore rules reject the write.
       try {
         if (typeof window !== 'undefined') {
           localStorage.setItem(`plc_member_doc_${user.uid}`, JSON.stringify(newMemberDoc));
@@ -260,6 +257,8 @@ export const RegisterPage: React.FC = () => {
       } catch (cacheErr) {
         console.warn('Local cache note:', cacheErr);
       }
+
+      await setDoc(memberDocRef, newMemberDoc);
 
       // 4. Redirect to /pending-approval
       navigate('/pending-approval');
@@ -281,8 +280,8 @@ export const RegisterPage: React.FC = () => {
         if (code === 'auth/operation-not-allowed') {
           errorObj = {
             code,
-            title: 'Firebase Email/Password Sign-In Disabled',
-            message: 'Email & Password authentication has not been enabled yet in the Firebase Console for project "pakistan-labour-community".',
+            title: 'Member Sign-In Is Not Enabled',
+            message: 'The Firebase Email/Password provider must be enabled. Members will still use their mobile number and password in PLC.',
             actionType: 'enable_email_auth'
           };
         } else if (code === 'auth/unauthorized-domain') {
@@ -295,15 +294,15 @@ export const RegisterPage: React.FC = () => {
         } else if (code === 'auth/email-already-in-use') {
           errorObj = {
             code,
-            title: 'Email Address Already Registered',
-            message: 'An account with this email already exists. Please sign in or use password reset.',
+            title: 'Mobile Number Already Registered',
+            message: 'This mobile number already has a PLC account. Sign in with the mobile number and password, or choose Existing account if the account predates mobile login.',
             actionType: 'general'
           };
         } else if (code === 'auth/invalid-email') {
           errorObj = {
             code,
-            title: 'Invalid Email Address',
-            message: 'The email address format is invalid. Please check for typographical errors.',
+            title: 'Could Not Create Mobile Login',
+            message: 'The mobile login could not be created. Check the number and try again.',
             actionType: 'general'
           };
         } else if (code === 'auth/weak-password') {
@@ -591,54 +590,37 @@ export const RegisterPage: React.FC = () => {
                 )}
               </div>
 
-              {/* Email & Mobile */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label htmlFor="email" className="block text-xs font-bold text-[#071F25] mb-1">
-                    Email Address <span className="text-rose-500">*</span>
-                  </label>
-                  <div className="relative">
-                    <Mail className="w-4 h-4 text-stone-400 absolute left-3 top-3 pointer-events-none" />
-                    <input
-                      id="email"
-                      type="email"
-                      required
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder="name@example.com"
-                      autoComplete="email"
-                      className={`w-full pl-9 pr-3 py-2.5 rounded-xl border text-sm text-[#071F25] placeholder:text-stone-400 focus:outline-hidden focus:ring-2 focus:ring-[#0D5A31] transition-colors ${
-                        fieldErrors.email ? 'border-rose-400 bg-rose-50/20' : 'border-stone-300'
-                      }`}
-                    />
-                  </div>
-                  {fieldErrors.email && (
-                    <p className="text-xs text-rose-600 mt-1">{fieldErrors.email}</p>
-                  )}
-                </div>
-
-                <div>
+              {/* Mobile number is the member's login username */}
+              <div>
                   <label htmlFor="mobile" className="block text-xs font-bold text-[#071F25] mb-1">
-                    Mobile Number <span className="text-rose-500">*</span>
+                    Mobile Number — Your Login Username <span className="text-rose-500">*</span>
                   </label>
-                  <div className="relative">
-                    <Phone className="w-4 h-4 text-stone-400 absolute left-3 top-3 pointer-events-none" />
-                    <input
-                      id="mobile"
-                      type="tel"
-                      required
-                      value={mobile}
-                      onChange={(e) => setMobile(e.target.value)}
-                      placeholder="+968 9123 4567 or +92 300..."
-                      className={`w-full pl-9 pr-3 py-2.5 rounded-xl border text-sm text-[#071F25] placeholder:text-stone-400 focus:outline-hidden focus:ring-2 focus:ring-[#0D5A31] transition-colors ${
-                        fieldErrors.mobile ? 'border-rose-400 bg-rose-50/20' : 'border-stone-300'
-                      }`}
-                    />
+                  <div className="grid grid-cols-[125px_1fr] gap-2">
+                    <select value={mobileCountryCode} onChange={(e) => setMobileCountryCode(e.target.value as MemberCountry)} aria-label="Mobile country code" className="rounded-xl border border-stone-300 bg-white px-2 py-2.5 text-xs font-semibold text-[#071F25] focus:outline-hidden focus:ring-2 focus:ring-[#0D5A31]">
+                      <option value="Oman">Oman +968</option>
+                      <option value="Pakistan">Pakistan +92</option>
+                    </select>
+                    <div className="relative">
+                      <Phone className="w-4 h-4 text-stone-400 absolute left-3 top-3 pointer-events-none" />
+                      <input
+                        id="mobile"
+                        type="tel"
+                        required
+                        value={mobile}
+                        onChange={(e) => setMobile(e.target.value)}
+                        placeholder="Mobile number"
+                        autoComplete="tel"
+                        inputMode="tel"
+                        className={`w-full pl-9 pr-3 py-2.5 rounded-xl border text-sm text-[#071F25] placeholder:text-stone-400 focus:outline-hidden focus:ring-2 focus:ring-[#0D5A31] transition-colors ${
+                          fieldErrors.mobile ? 'border-rose-400 bg-rose-50/20' : 'border-stone-300'
+                        }`}
+                      />
+                    </div>
                   </div>
                   {fieldErrors.mobile && (
                     <p className="text-xs text-rose-600 mt-1">{fieldErrors.mobile}</p>
                   )}
-                </div>
+                  <p className="mt-1 text-[11px] text-stone-500">No email needed. Use this same mobile number and password to sign in.</p>
               </div>
 
               {/* Country & Current Location */}

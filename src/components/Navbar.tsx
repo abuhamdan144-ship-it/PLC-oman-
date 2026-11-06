@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { PakistanLabourCommunityLogo } from '../lib/logo';
@@ -34,6 +34,19 @@ export const Navbar: React.FC = () => {
   const [showNotifications, setShowNotifications] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
+  const [mobileLoginNotice, setMobileLoginNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    const migrated = sessionStorage.getItem('plc_mobile_login_migrated');
+    const pending = sessionStorage.getItem('plc_mobile_login_migration_pending');
+    if (migrated) {
+      setMobileLoginNotice('Your account now uses your mobile number and the same password for sign-in.');
+      sessionStorage.removeItem('plc_mobile_login_migrated');
+    } else if (pending) {
+      setMobileLoginNotice('You are signed in, but mobile login could not be switched automatically. Use Existing account or contact the administrator next time.');
+      sessionStorage.removeItem('plc_mobile_login_migration_pending');
+    }
+  }, [location.pathname]);
 
   const handleLogout = async () => {
     setShowUserMenu(false);
@@ -162,7 +175,7 @@ export const Navbar: React.FC = () => {
                       )}
                       <div className="text-left hidden lg:block">
                         <p className="text-xs font-semibold text-white leading-tight truncate max-w-[120px]">
-                          {member?.fullName || user.email?.split('@')[0]}
+                          {member?.fullName || member?.mobile || (isAdmin ? user.email?.split('@')[0] : 'PLC Member')}
                         </p>
                         <p className="text-[10px] text-amber-300/90 leading-tight">
                           {member?.memberId || (isAdmin ? 'Admin' : 'Member')}
@@ -177,7 +190,7 @@ export const Navbar: React.FC = () => {
                             {member?.fullName || 'Community Member'}
                           </p>
                           <p className="text-[11px] text-stone-500 truncate">
-                            {user.email}
+                            {isAdmin ? user.email : (member?.mobile || 'Member account')}
                           </p>
                           {member?.memberId && (
                             <p className="text-[11px] font-mono text-emerald-800 font-bold mt-1">
@@ -290,7 +303,7 @@ export const Navbar: React.FC = () => {
             {user ? (
               <div className="space-y-1">
                 <div className="py-2 text-xs text-stone-300">
-                  Signed in as <span className="font-semibold text-white">{member?.fullName || user.email}</span>
+                  Signed in as <span className="font-semibold text-white">{member?.fullName || member?.mobile || (isAdmin ? user.email : 'PLC Member')}</span>
                   {member?.memberId && <div className="text-amber-400 font-mono text-[11px]">{member.memberId}</div>}
                 </div>
 
@@ -375,6 +388,15 @@ export const Navbar: React.FC = () => {
           </div>
         )}
       </header>
+
+      {mobileLoginNotice && (
+        <div role="status" className="fixed left-1/2 top-20 z-50 w-[min(92vw,34rem)] -translate-x-1/2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs font-semibold text-emerald-950 shadow-lg">
+          <div className="flex items-start justify-between gap-3">
+            <span>{mobileLoginNotice}</span>
+            <button type="button" onClick={() => setMobileLoginNotice(null)} aria-label="Dismiss sign-in update" className="font-bold text-emerald-900">×</button>
+          </div>
+        </div>
+      )}
 
       {/* Notification Modal */}
       <NotificationModal

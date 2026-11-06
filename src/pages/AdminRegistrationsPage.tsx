@@ -345,8 +345,8 @@ export const AdminRegistrationsPage: React.FC = () => {
   // Manually Add & Approve a New Member
   const handleManualAddAndApprove = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newMemberName.trim() || !newMemberEmail.trim()) {
-      showToast('Please enter applicant name and email.', 'error');
+    if (!newMemberName.trim()) {
+      showToast('Please enter the applicant name.', 'error');
       return;
     }
 
@@ -1307,7 +1307,7 @@ export const AdminRegistrationsPage: React.FC = () => {
               )}
               <div>
                 <h4 className="font-bold text-base text-[#071F25]">{selectedMember.fullName}</h4>
-                <p className="text-xs text-stone-500">{selectedMember.email}</p>
+                <p className="text-xs text-stone-500">{selectedMember.email || 'No email — mobile sign-in'}</p>
                 <div className="mt-2 flex items-center gap-2">
                   <span className="font-mono text-xs font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
                     {selectedMember.memberId || 'ID PENDING APPROVAL'}
@@ -1496,7 +1496,7 @@ export const AdminRegistrationsPage: React.FC = () => {
             <div className="flex items-center justify-between border-b border-stone-100 pb-3"><div><h3 className="font-heading text-base font-bold text-[#071F25]">Edit member record</h3><p className="text-xs text-stone-500">Administrator changes are saved to Firestore.</p></div><button type="button" onClick={() => setEditingMember(null)} className="text-stone-400">✕</button></div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <label className="text-xs font-bold text-stone-700">Full name<input required value={editingMember.fullName} onChange={(event) => setEditingMember({ ...editingMember, fullName: event.target.value })} className="mt-1 w-full rounded-xl border border-stone-300 p-2.5 text-sm font-normal" /></label>
-              <label className="text-xs font-bold text-stone-700">Email<input required type="email" value={editingMember.email} onChange={(event) => setEditingMember({ ...editingMember, email: event.target.value })} className="mt-1 w-full rounded-xl border border-stone-300 p-2.5 text-sm font-normal" /></label>
+              <label className="text-xs font-bold text-stone-700">Email (optional contact)<input type="email" value={editingMember.email} onChange={(event) => setEditingMember({ ...editingMember, email: event.target.value })} className="mt-1 w-full rounded-xl border border-stone-300 p-2.5 text-sm font-normal" /></label>
               <label className="text-xs font-bold text-stone-700">Mobile<input required value={editingMember.mobile} onChange={(event) => setEditingMember({ ...editingMember, mobile: event.target.value })} className="mt-1 w-full rounded-xl border border-stone-300 p-2.5 text-sm font-normal" /></label>
               <label className="text-xs font-bold text-stone-700">CNIC / Passport<input required value={editingMember.idNumber} onChange={(event) => setEditingMember({ ...editingMember, idNumber: event.target.value })} className="mt-1 w-full rounded-xl border border-stone-300 p-2.5 text-sm font-normal" /></label>
               <label className="text-xs font-bold text-stone-700">Country<select value={editingMember.country} onChange={(event) => setEditingMember({ ...editingMember, country: event.target.value as MemberCountry })} className="mt-1 w-full rounded-xl border border-stone-300 p-2.5 text-sm font-normal"><option value="Oman">Oman</option><option value="Pakistan">Pakistan</option></select></label>
@@ -1573,14 +1573,13 @@ export const AdminRegistrationsPage: React.FC = () => {
 
               <div>
                 <label className="block text-xs font-bold text-stone-700 mb-1">
-                  Registered Email Address *
+                  Email (optional contact only)
                 </label>
                 <input
                   type="email"
-                  required
                   value={newMemberEmail}
                   onChange={(e) => setNewMemberEmail(e.target.value)}
-                  placeholder="name@example.com"
+                  placeholder="No email required"
                   className="w-full text-xs p-2.5 rounded-xl border border-stone-300 focus:ring-2 focus:ring-[#0D5A31]"
                 />
               </div>

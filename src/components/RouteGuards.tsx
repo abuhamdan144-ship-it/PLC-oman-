@@ -88,7 +88,7 @@ const AdminAccessGate: React.FC<{ user: { uid: string; email: string | null }; m
         <div className="p-3.5 bg-stone-50 rounded-xl border border-stone-200 text-xs text-left space-y-1.5">
           <div className="flex justify-between items-center text-stone-500">
             <span>Signed In Account:</span>
-            <span className="font-semibold text-stone-800 truncate max-w-[200px]">{user.email || 'No email'}</span>
+            <span className="font-semibold text-stone-800 truncate max-w-[200px]">{user.email?.toLowerCase().endsWith('@plc-members.invalid') ? 'Member account (mobile sign-in)' : (user.email || 'No email')}</span>
           </div>
           <div className="flex justify-between items-center text-stone-500">
             <span>Administrator Login:</span>
