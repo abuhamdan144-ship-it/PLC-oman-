@@ -75,6 +75,10 @@ export const AdminRegistrationsPage: React.FC = () => {
   const [newMemberIdNumber, setNewMemberIdNumber] = useState('');
   const [newMemberLocation, setNewMemberLocation] = useState('Muscat, Oman');
   const [newMemberCountry, setNewMemberCountry] = useState<MemberCountry>('Oman');
+  const [newMemberEmergencyName, setNewMemberEmergencyName] = useState('');
+  const [newMemberEmergencyPhone, setNewMemberEmergencyPhone] = useState('');
+  const [newMemberPhoto, setNewMemberPhoto] = useState('');
+  const [newMemberPhotoPreview, setNewMemberPhotoPreview] = useState('');
   const [isAddingMember, setIsAddingMember] = useState(false);
 
   // Modal Dialogs
@@ -345,8 +349,8 @@ export const AdminRegistrationsPage: React.FC = () => {
   // Manually Add & Approve a New Member
   const handleManualAddAndApprove = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newMemberName.trim()) {
-      showToast('Please enter the applicant name.', 'error');
+    if (!newMemberName.trim() || !newMemberMobile.trim() || !newMemberIdNumber.trim() || !newMemberLocation.trim()) {
+      showToast('Please complete the member name, mobile, ID document, and location.', 'error');
       return;
     }
 
@@ -359,10 +363,11 @@ export const AdminRegistrationsPage: React.FC = () => {
       uid: newUid,
       fullName: newMemberName.trim(),
       email: newMemberEmail.trim().toLowerCase(),
-      mobile: newMemberMobile.trim() || '+968 9000 0000',
-      idNumber: newMemberIdNumber.trim() || 'MANUAL-CNIC-001',
+      mobile: newMemberMobile.trim(),
+      idNumber: newMemberIdNumber.trim(),
       country: newMemberCountry,
-      currentLocation: newMemberLocation.trim() || 'Muscat, Oman',
+      currentLocation: newMemberLocation.trim(),
+      photoURL: newMemberPhoto,
       status: 'approved',
       role: 'member',
       memberId: randomId,
@@ -371,8 +376,8 @@ export const AdminRegistrationsPage: React.FC = () => {
       memberSince: 'October 2026',
       adminNote: 'Manually verified and registered by Administrator.',
       emergencyContact: {
-        name: 'Family Welfare Contact',
-        phone: newMemberMobile.trim() || '+968 9000 0000',
+        name: newMemberEmergencyName.trim() || newMemberName.trim(),
+        phone: newMemberEmergencyPhone.trim() || newMemberMobile.trim(),
         relation: 'Family',
       },
     };
@@ -394,6 +399,12 @@ export const AdminRegistrationsPage: React.FC = () => {
     setNewMemberEmail('');
     setNewMemberMobile('');
     setNewMemberIdNumber('');
+    setNewMemberLocation('Muscat, Oman');
+    setNewMemberCountry('Oman');
+    setNewMemberEmergencyName('');
+    setNewMemberEmergencyPhone('');
+    setNewMemberPhoto('');
+    setNewMemberPhotoPreview('');
     showToast(`New member ${newProfile.fullName} registered & approved with ID ${randomId}!`);
   };
 
@@ -1536,7 +1547,7 @@ export const AdminRegistrationsPage: React.FC = () => {
       {/* ========================================================= */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-stone-200 space-y-4 animate-in zoom-in-95 duration-150">
+          <div className="bg-white rounded-3xl max-w-2xl w-full max-h-[92vh] overflow-y-auto p-5 sm:p-6 shadow-2xl border border-stone-200 space-y-4 animate-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between border-b border-stone-100 pb-3">
               <div className="flex items-center gap-2">
                 <UserPlus className="w-5 h-5 text-[#0D5A31]" />
@@ -1553,107 +1564,45 @@ export const AdminRegistrationsPage: React.FC = () => {
             </div>
 
             <p className="text-xs text-stone-600 leading-relaxed">
-              Add a member directly from the administration desk. The applicant will be marked as <strong>Approved</strong> immediately and issued an official membership card.
+              Enter the paper application and attach the member photo. The member record will be saved as <strong>Approved</strong> and issued an official card. This desk entry does not create a mobile-login password; portal access requires a Firebase member account.
             </p>
 
-            <form onSubmit={handleManualAddAndApprove} className="space-y-3">
-              <div>
-                <label className="block text-xs font-bold text-stone-700 mb-1">
-                  Full Official Name (as on CNIC/Passport) *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={newMemberName}
-                  onChange={(e) => setNewMemberName(e.target.value)}
-                  placeholder="e.g. Muhammad Aslam"
-                  className="w-full text-xs p-2.5 rounded-xl border border-stone-300 focus:ring-2 focus:ring-[#0D5A31]"
-                />
+            <form onSubmit={handleManualAddAndApprove} className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <label className="block text-xs font-bold text-stone-700">Full Official Name (as on CNIC/Passport) *<input type="text" required value={newMemberName} onChange={(e) => setNewMemberName(e.target.value)} placeholder="e.g. Muhammad Aslam" className="mt-1 w-full text-sm p-2.5 rounded-xl border border-stone-300 focus:ring-2 focus:ring-[#0D5A31]" /></label>
+                <label className="block text-xs font-bold text-stone-700">Mobile Number *<input type="tel" inputMode="tel" required value={newMemberMobile} onChange={(e) => setNewMemberMobile(e.target.value)} placeholder="+968 9123 4567" className="mt-1 w-full text-sm p-2.5 rounded-xl border border-stone-300 focus:ring-2 focus:ring-[#0D5A31]" /></label>
+                <label className="block text-xs font-bold text-stone-700">CNIC or Passport Number *<input type="text" required value={newMemberIdNumber} onChange={(e) => setNewMemberIdNumber(e.target.value)} placeholder="35201-1234567-1" className="mt-1 w-full text-sm p-2.5 rounded-xl border border-stone-300 focus:ring-2 focus:ring-[#0D5A31]" /></label>
+                <label className="block text-xs font-bold text-stone-700">Email (optional contact only)<input type="email" value={newMemberEmail} onChange={(e) => setNewMemberEmail(e.target.value)} placeholder="No email required" className="mt-1 w-full text-sm p-2.5 rounded-xl border border-stone-300 focus:ring-2 focus:ring-[#0D5A31]" /></label>
+                <label className="block text-xs font-bold text-stone-700">Country of Stay *<select value={newMemberCountry} onChange={(e) => setNewMemberCountry(e.target.value as MemberCountry)} className="mt-1 w-full text-sm p-2.5 rounded-xl border border-stone-300 bg-white focus:ring-2 focus:ring-[#0D5A31]"><option value="Oman">Sultanate of Oman</option><option value="Pakistan">Pakistan</option></select></label>
+                <label className="block text-xs font-bold text-stone-700">City / Wilayat / District *<input type="text" required value={newMemberLocation} onChange={(e) => setNewMemberLocation(e.target.value)} placeholder="Muscat, Oman" className="mt-1 w-full text-sm p-2.5 rounded-xl border border-stone-300 focus:ring-2 focus:ring-[#0D5A31]" /></label>
+                <label className="block text-xs font-bold text-stone-700">Emergency Contact Name<input type="text" value={newMemberEmergencyName} onChange={(e) => setNewMemberEmergencyName(e.target.value)} placeholder="Family contact" className="mt-1 w-full text-sm p-2.5 rounded-xl border border-stone-300 focus:ring-2 focus:ring-[#0D5A31]" /></label>
+                <label className="block text-xs font-bold text-stone-700">Emergency Contact Mobile<input type="tel" inputMode="tel" value={newMemberEmergencyPhone} onChange={(e) => setNewMemberEmergencyPhone(e.target.value)} placeholder="+968 9123 4567" className="mt-1 w-full text-sm p-2.5 rounded-xl border border-stone-300 focus:ring-2 focus:ring-[#0D5A31]" /></label>
               </div>
-
-              <div>
-                <label className="block text-xs font-bold text-stone-700 mb-1">
-                  Email (optional contact only)
-                </label>
-                <input
-                  type="email"
-                  value={newMemberEmail}
-                  onChange={(e) => setNewMemberEmail(e.target.value)}
-                  placeholder="No email required"
-                  className="w-full text-xs p-2.5 rounded-xl border border-stone-300 focus:ring-2 focus:ring-[#0D5A31]"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-xs font-bold text-stone-700 mb-1">
-                    Mobile Phone
-                  </label>
-                  <input
-                    type="text"
-                    value={newMemberMobile}
-                    onChange={(e) => setNewMemberMobile(e.target.value)}
-                    placeholder="+968 9123 4567"
-                    className="w-full text-xs p-2.5 rounded-xl border border-stone-300 focus:ring-2 focus:ring-[#0D5A31]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-stone-700 mb-1">
-                    CNIC or Passport
-                  </label>
-                  <input
-                    type="text"
-                    value={newMemberIdNumber}
-                    onChange={(e) => setNewMemberIdNumber(e.target.value)}
-                    placeholder="35201-1234567-1"
-                    className="w-full text-xs p-2.5 rounded-xl border border-stone-300 focus:ring-2 focus:ring-[#0D5A31]"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-xs font-bold text-stone-700 mb-1">
-                    Country
-                  </label>
-                  <select
-                    value={newMemberCountry}
-                    onChange={(e) => setNewMemberCountry(e.target.value as MemberCountry)}
-                    className="w-full text-xs p-2.5 rounded-xl border border-stone-300 focus:ring-2 focus:ring-[#0D5A31]"
-                  >
-                    <option value="Oman">Sultanate of Oman</option>
-                    <option value="Pakistan">Pakistan</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-stone-700 mb-1">
-                    City / Wilayat
-                  </label>
-                  <input
-                    type="text"
-                    value={newMemberLocation}
-                    onChange={(e) => setNewMemberLocation(e.target.value)}
-                    placeholder="Muscat, Oman"
-                    className="w-full text-xs p-2.5 rounded-xl border border-stone-300 focus:ring-2 focus:ring-[#0D5A31]"
-                  />
-                </div>
-              </div>
-
+              <label className="block text-xs font-bold text-stone-700">Member Photo (optional)
+                <input type="file" accept="image/*" capture="environment" onChange={async (event) => {
+                  const file = event.target.files?.[0];
+                  if (!file) return;
+                  if (!file.type.startsWith('image/')) {
+                    showToast('Choose an image file for the member photo.', 'error');
+                    event.target.value = '';
+                    return;
+                  }
+                  try {
+                    const compressedPhoto = await compressImageToDataUrl(file, 32 * 1024, 320);
+                    setNewMemberPhoto(compressedPhoto);
+                    setNewMemberPhotoPreview(compressedPhoto);
+                  } catch (error) {
+                    showToast(error instanceof Error ? error.message : 'Could not process this photo.', 'error');
+                    event.target.value = '';
+                  }
+                }} className="mt-1 block w-full text-xs font-normal" />
+                <span className="mt-1 block text-[10px] font-normal text-stone-500">Take a photo or choose one from this device. It is compressed and stored with the member record for the card.</span>
+                {newMemberPhotoPreview && <img src={newMemberPhotoPreview} alt="New member photo preview" className="mt-2 h-24 w-20 rounded-xl border border-stone-200 object-cover" />}
+              </label>
+              <div className="rounded-xl bg-emerald-50 px-3 py-2 text-xs text-emerald-900">Required: name, mobile, ID document and location. This entry is saved as approved and issued a membership ID/card.</div>
               <div className="flex items-center gap-2 pt-3 border-t border-stone-100">
-                <button
-                  type="button"
-                  onClick={() => setShowAddModal(false)}
-                  className="flex-1 py-2.5 text-xs font-semibold text-stone-600 hover:bg-stone-100 rounded-xl"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isAddingMember}
-                  className="flex-1 py-2.5 text-xs font-bold bg-[#0D5A31] hover:bg-[#083e20] text-white rounded-xl shadow-md disabled:opacity-50"
-                >
-                  {isAddingMember ? 'Registering...' : 'Save & Issue Approved Card'}
-                </button>
+                <button type="button" onClick={() => setShowAddModal(false)} className="flex-1 py-2.5 text-xs font-semibold text-stone-600 hover:bg-stone-100 rounded-xl">Cancel</button>
+                <button type="submit" disabled={isAddingMember} className="flex-1 py-2.5 text-xs font-bold bg-[#0D5A31] hover:bg-[#083e20] text-white rounded-xl shadow-md disabled:opacity-50">{isAddingMember ? 'Saving member...' : 'Save, Approve & Issue Card'}</button>
               </div>
             </form>
           </div>
