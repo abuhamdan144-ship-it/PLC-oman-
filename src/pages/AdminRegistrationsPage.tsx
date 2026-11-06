@@ -70,6 +70,7 @@ export const AdminRegistrationsPage: React.FC = () => {
   // Add & Approve Member Modal
   const [showAddModal, setShowAddModal] = useState(false);
   const [newMemberName, setNewMemberName] = useState('');
+  const [newMemberFatherName, setNewMemberFatherName] = useState('');
   const [newMemberEmail, setNewMemberEmail] = useState('');
   const [newMemberMobile, setNewMemberMobile] = useState('');
   const [newMemberIdNumber, setNewMemberIdNumber] = useState('');
@@ -349,8 +350,8 @@ export const AdminRegistrationsPage: React.FC = () => {
   // Manually Add & Approve a New Member
   const handleManualAddAndApprove = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newMemberName.trim() || !newMemberMobile.trim() || !newMemberIdNumber.trim() || !newMemberLocation.trim()) {
-      showToast('Please complete the member name, mobile, ID document, and location.', 'error');
+    if (!newMemberName.trim() || !newMemberFatherName.trim() || !newMemberMobile.trim() || !newMemberIdNumber.trim() || !newMemberLocation.trim()) {
+      showToast('Please complete the member name, father name, mobile, ID document, and location.', 'error');
       return;
     }
 
@@ -362,6 +363,7 @@ export const AdminRegistrationsPage: React.FC = () => {
     const newProfile: MemberProfile = {
       uid: newUid,
       fullName: newMemberName.trim(),
+      fatherName: newMemberFatherName.trim(),
       email: newMemberEmail.trim().toLowerCase(),
       mobile: newMemberMobile.trim(),
       idNumber: newMemberIdNumber.trim(),
@@ -396,6 +398,7 @@ export const AdminRegistrationsPage: React.FC = () => {
     setIsAddingMember(false);
     setShowAddModal(false);
     setNewMemberName('');
+    setNewMemberFatherName('');
     setNewMemberEmail('');
     setNewMemberMobile('');
     setNewMemberIdNumber('');
@@ -1318,6 +1321,7 @@ export const AdminRegistrationsPage: React.FC = () => {
               )}
               <div>
                 <h4 className="font-bold text-base text-[#071F25]">{selectedMember.fullName}</h4>
+                <p className="text-xs text-stone-500">Father: {selectedMember.fatherName || 'Not recorded'}</p>
                 <p className="text-xs text-stone-500">{selectedMember.email || 'No email — mobile sign-in'}</p>
                 <div className="mt-2 flex items-center gap-2">
                   <span className="font-mono text-xs font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
@@ -1507,6 +1511,7 @@ export const AdminRegistrationsPage: React.FC = () => {
             <div className="flex items-center justify-between border-b border-stone-100 pb-3"><div><h3 className="font-heading text-base font-bold text-[#071F25]">Edit member record</h3><p className="text-xs text-stone-500">Administrator changes are saved to Firestore.</p></div><button type="button" onClick={() => setEditingMember(null)} className="text-stone-400">✕</button></div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <label className="text-xs font-bold text-stone-700">Full name<input required value={editingMember.fullName} onChange={(event) => setEditingMember({ ...editingMember, fullName: event.target.value })} className="mt-1 w-full rounded-xl border border-stone-300 p-2.5 text-sm font-normal" /></label>
+              <label className="text-xs font-bold text-stone-700">Father’s name<input value={editingMember.fatherName || ''} onChange={(event) => setEditingMember({ ...editingMember, fatherName: event.target.value })} className="mt-1 w-full rounded-xl border border-stone-300 p-2.5 text-sm font-normal" /></label>
               <label className="text-xs font-bold text-stone-700">Email (optional contact)<input type="email" value={editingMember.email} onChange={(event) => setEditingMember({ ...editingMember, email: event.target.value })} className="mt-1 w-full rounded-xl border border-stone-300 p-2.5 text-sm font-normal" /></label>
               <label className="text-xs font-bold text-stone-700">Mobile<input required value={editingMember.mobile} onChange={(event) => setEditingMember({ ...editingMember, mobile: event.target.value })} className="mt-1 w-full rounded-xl border border-stone-300 p-2.5 text-sm font-normal" /></label>
               <label className="text-xs font-bold text-stone-700">CNIC / Passport<input required value={editingMember.idNumber} onChange={(event) => setEditingMember({ ...editingMember, idNumber: event.target.value })} className="mt-1 w-full rounded-xl border border-stone-300 p-2.5 text-sm font-normal" /></label>
@@ -1570,6 +1575,7 @@ export const AdminRegistrationsPage: React.FC = () => {
             <form onSubmit={handleManualAddAndApprove} className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <label className="block text-xs font-bold text-stone-700">Full Official Name (as on CNIC/Passport) *<input type="text" required value={newMemberName} onChange={(e) => setNewMemberName(e.target.value)} placeholder="e.g. Muhammad Aslam" className="mt-1 w-full text-sm p-2.5 rounded-xl border border-stone-300 focus:ring-2 focus:ring-[#0D5A31]" /></label>
+                <label className="block text-xs font-bold text-stone-700">Father’s Name *<input type="text" required value={newMemberFatherName} onChange={(e) => setNewMemberFatherName(e.target.value)} placeholder="Father’s full name" className="mt-1 w-full text-sm p-2.5 rounded-xl border border-stone-300 focus:ring-2 focus:ring-[#0D5A31]" /></label>
                 <label className="block text-xs font-bold text-stone-700">Mobile Number *<input type="tel" inputMode="tel" required value={newMemberMobile} onChange={(e) => setNewMemberMobile(e.target.value)} placeholder="+968 9123 4567" className="mt-1 w-full text-sm p-2.5 rounded-xl border border-stone-300 focus:ring-2 focus:ring-[#0D5A31]" /></label>
                 <label className="block text-xs font-bold text-stone-700">CNIC or Passport Number *<input type="text" required value={newMemberIdNumber} onChange={(e) => setNewMemberIdNumber(e.target.value)} placeholder="35201-1234567-1" className="mt-1 w-full text-sm p-2.5 rounded-xl border border-stone-300 focus:ring-2 focus:ring-[#0D5A31]" /></label>
                 <label className="block text-xs font-bold text-stone-700">Email (optional contact only)<input type="email" value={newMemberEmail} onChange={(e) => setNewMemberEmail(e.target.value)} placeholder="No email required" className="mt-1 w-full text-sm p-2.5 rounded-xl border border-stone-300 focus:ring-2 focus:ring-[#0D5A31]" /></label>
@@ -1599,7 +1605,7 @@ export const AdminRegistrationsPage: React.FC = () => {
                 <span className="mt-1 block text-[10px] font-normal text-stone-500">Choose an existing photo from your phone’s Photos/Gallery. If your phone offers a camera option, you can use that too. The image is compressed and stored with the member record for the card.</span>
                 {newMemberPhotoPreview && <img src={newMemberPhotoPreview} alt="New member photo preview" className="mt-2 h-24 w-20 rounded-xl border border-stone-200 object-cover" />}
               </label>
-              <div className="rounded-xl bg-emerald-50 px-3 py-2 text-xs text-emerald-900">Required: name, mobile, ID document and location. This entry is saved as approved and issued a membership ID/card.</div>
+              <div className="rounded-xl bg-emerald-50 px-3 py-2 text-xs text-emerald-900">Required: member name, father’s name, mobile, ID document and location. This entry is saved as approved and issued a membership ID/card.</div>
               <div className="flex items-center gap-2 pt-3 border-t border-stone-100">
                 <button type="button" onClick={() => setShowAddModal(false)} className="flex-1 py-2.5 text-xs font-semibold text-stone-600 hover:bg-stone-100 rounded-xl">Cancel</button>
                 <button type="submit" disabled={isAddingMember} className="flex-1 py-2.5 text-xs font-bold bg-[#0D5A31] hover:bg-[#083e20] text-white rounded-xl shadow-md disabled:opacity-50">{isAddingMember ? 'Saving member...' : 'Save, Approve & Issue Card'}</button>

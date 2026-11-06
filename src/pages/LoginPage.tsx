@@ -205,6 +205,7 @@ export const LoginPage: React.FC = () => {
             const recoveredProfile = {
               uid: user.uid,
               fullName: cached.fullName,
+              fatherName: typeof cached.fatherName === 'string' ? cached.fatherName : '',
               email: !isInternalMemberAuthEmail(user.email)
                 ? (user.email || (typeof cached.email === 'string' ? cached.email : cleanEmail))
                 : (typeof cached.email === 'string' ? cached.email : ''),

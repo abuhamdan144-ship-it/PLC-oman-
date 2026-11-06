@@ -12,6 +12,7 @@ export interface MemberProfile {
   uid: string;
   memberId?: string;
   fullName: string;
+  fatherName?: string;
   email: string;
   mobile: string;
   country: MemberCountry;
@@ -33,6 +34,7 @@ export interface PublicMemberProfile {
   uid: string;
   memberId: string;
   fullName: string;
+  fatherName?: string;
   country: MemberCountry;
   currentLocation: string;
   photoURL?: string;

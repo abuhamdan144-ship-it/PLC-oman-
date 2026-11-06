@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { MembershipCard } from '../components/MembershipCard';
 import { VotingPanel } from '../components/VotingPanel';
@@ -47,6 +47,7 @@ export const MemberPage: React.FC = () => {
 
   // Profile update form state
   const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [editFatherName, setEditFatherName] = useState(member?.fatherName || '');
   const [editMobile, setEditMobile] = useState(member?.mobile || '');
   const [editLocation, setEditLocation] = useState(member?.currentLocation || '');
   const [editEmergencyName, setEditEmergencyName] = useState(member?.emergencyContact?.name || '');
@@ -56,6 +57,10 @@ export const MemberPage: React.FC = () => {
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
   const [updateMessage, setUpdateMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    setEditFatherName(member?.fatherName || '');
+  }, [member?.fatherName]);
 
   // Incident reporting form state
   const [incidentCategory, setIncidentCategory] = useState<IncidentCategory | ''>('');
@@ -104,6 +109,7 @@ export const MemberPage: React.FC = () => {
         : (member.photoURL || '');
       const memberDocRef = doc(db, 'members', user.uid);
       await updateDoc(memberDocRef, {
+        fatherName: editFatherName.trim(),
         mobile: editMobile.trim(),
         currentLocation: editLocation.trim(),
         emergencyContact: {
@@ -425,10 +431,14 @@ export const MemberPage: React.FC = () => {
                 </button>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
                 <div>
                   <span className="text-stone-400 block uppercase text-[10px]">Official Member ID</span>
                   <span className="font-mono font-bold text-base text-emerald-800">{member.memberId || 'N/A'}</span>
+                </div>
+                <div>
+                  <span className="text-stone-400 block uppercase text-[10px]">Father’s Name</span>
+                  <span className="font-semibold text-stone-800">{member.fatherName || 'Not recorded'}</span>
                 </div>
                 <div>
                   <span className="text-stone-400 block uppercase text-[10px]">National ID / Passport</span>
@@ -472,10 +482,14 @@ export const MemberPage: React.FC = () => {
               <span className="text-[11px] font-bold uppercase tracking-wider text-stone-600 block">
                 Administrative System Record (Locked)
               </span>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
                 <div>
                   <span className="text-stone-400 block text-[10px]">Member ID</span>
                   <span className="font-mono font-bold text-[#0D5A31]">{member.memberId || 'N/A'}</span>
+                </div>
+                <div>
+                  <span className="text-stone-400 block text-[10px]">Father’s Name</span>
+                  <span className="font-semibold text-stone-700">{member.fatherName || 'Not recorded'}</span>
                 </div>
                 <div>
                   <span className="text-stone-400 block text-[10px]">CNIC / Passport #</span>
@@ -487,7 +501,7 @@ export const MemberPage: React.FC = () => {
                 </div>
               </div>
               <p className="text-[10px] text-stone-500 italic">
-                * Note: Full name, CNIC/Passport, Member ID, and status are protected civic fields and cannot be modified by members.
+                * Note: Full name, CNIC/Passport, Member ID, and status are protected civic fields and cannot be modified by members. Father’s name can be updated below.
               </p>
             </div>
 
@@ -519,6 +533,19 @@ export const MemberPage: React.FC = () => {
 
               {/* Editable Fields */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label htmlFor="edit-father-name" className="block text-xs font-bold text-[#071F25] mb-1">
+                    Father’s Name
+                  </label>
+                  <input
+                    id="edit-father-name"
+                    type="text"
+                    disabled={!isEditingProfile}
+                    value={editFatherName}
+                    onChange={(e) => setEditFatherName(e.target.value)}
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-stone-300 disabled:bg-stone-100 disabled:text-stone-600 focus:ring-2 focus:ring-[#0D5A31]"
+                  />
+                </div>
                 <div>
                   <label htmlFor="edit-mobile" className="block text-xs font-bold text-[#071F25] mb-1">
                     Mobile Phone Number

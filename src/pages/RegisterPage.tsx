@@ -45,6 +45,7 @@ export const RegisterPage: React.FC = () => {
 
   // Form Fields
   const [fullName, setFullName] = useState('');
+  const [fatherName, setFatherName] = useState('');
   const [mobile, setMobile] = useState('');
   const [mobileCountryCode, setMobileCountryCode] = useState<MemberCountry>('Oman');
   const [country, setCountry] = useState<MemberCountry>('Oman');
@@ -110,6 +111,7 @@ export const RegisterPage: React.FC = () => {
     // Official Community WhatsApp number (Account 96766876 / WhatsApp +968 9676 6876)
     const phone = '96896766876';
     const nameText = fullName.trim() || 'ممبر';
+    const fatherText = fatherName.trim() || 'فارم میں درج ہے';
     const cnicText = idNumber.trim() || 'فارم میں درج ہے';
     const mobileText = mobile.trim() || 'فارم میں درج ہے';
     const locationText = currentLocation.trim() || country;
@@ -120,6 +122,7 @@ export const RegisterPage: React.FC = () => {
 یہ میری ادائیگی / فنڈ تعاون کی رسید ہے۔
 
 نام: ${nameText}
+والد کا نام: ${fatherText}
 شناختی کارڈ / پاسپورٹ: ${cnicText}
 موبائل فون: ${mobileText}
 شہر / ولایت: ${locationText}
@@ -133,6 +136,7 @@ export const RegisterPage: React.FC = () => {
 
   const handleFillDemo = () => {
     setFullName(SAMPLE_MEMBER_PENDING.fullName);
+    setFatherName('Muhammad Aslam');
     setMobile(SAMPLE_MEMBER_PENDING.mobile);
     setMobileCountryCode(SAMPLE_MEMBER_PENDING.country);
     setCountry(SAMPLE_MEMBER_PENDING.country);
@@ -151,6 +155,10 @@ export const RegisterPage: React.FC = () => {
 
     if (!fullName.trim() || fullName.trim().length < 3) {
       errors.fullName = 'Please enter your full official name (as on CNIC/Passport).';
+    }
+
+    if (!fatherName.trim()) {
+      errors.fatherName = "Please enter the member's father's name.";
     }
 
     if (!normalizeMemberMobile(mobile, mobileCountryCode)) {
@@ -225,6 +233,7 @@ export const RegisterPage: React.FC = () => {
       const newMemberDoc = {
         uid: user.uid,
         fullName: fullName.trim(),
+        fatherName: fatherName.trim(),
         email: '',
         mobile: normalizedMobile,
         country,
@@ -588,6 +597,28 @@ export const RegisterPage: React.FC = () => {
                 {fieldErrors.fullName && (
                   <p className="text-xs text-rose-600 mt-1">{fieldErrors.fullName}</p>
                 )}
+              </div>
+
+              <div>
+                <label htmlFor="fatherName" className="block text-xs font-bold text-[#071F25] mb-1">
+                  Father’s Name <span className="text-rose-500">*</span>
+                </label>
+                <div className="relative">
+                  <User className="w-4 h-4 text-stone-400 absolute left-3 top-3 pointer-events-none" />
+                  <input
+                    id="fatherName"
+                    type="text"
+                    required
+                    value={fatherName}
+                    onChange={(e) => setFatherName(e.target.value)}
+                    placeholder="Enter father’s full name"
+                    autoComplete="additional-name"
+                    className={`w-full pl-9 pr-3 py-2.5 rounded-xl border text-sm text-[#071F25] placeholder:text-stone-400 focus:outline-hidden focus:ring-2 focus:ring-[#0D5A31] transition-colors ${
+                      fieldErrors.fatherName ? 'border-rose-400 bg-rose-50/20' : 'border-stone-300'
+                    }`}
+                  />
+                </div>
+                {fieldErrors.fatherName && <p className="text-xs text-rose-600 mt-1">{fieldErrors.fatherName}</p>}
               </div>
 
               {/* Mobile number is the member's login username */}

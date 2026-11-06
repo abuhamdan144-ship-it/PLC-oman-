@@ -53,7 +53,7 @@ service cloud.firestore {
 
       allow create: if (isAdmin() || isOwner(userId))
         && request.resource.data.keys().hasOnly([
-          'uid', 'fullName', 'email', 'mobile', 'country', 'currentLocation', 'idNumber',
+          'uid', 'fullName', 'fatherName', 'email', 'mobile', 'country', 'currentLocation', 'idNumber',
           'photoURL', 'paymentReceiptURL', 'receiptReference', 'status', 'adminNote',
           'registeredAt', 'approvedAt', 'memberSince', 'memberId', 'emergencyContact', 'role'
         ])
@@ -68,7 +68,7 @@ service cloud.firestore {
       allow update: if isAdmin() || (
         isOwner(userId)
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'mobile', 'currentLocation', 'emergencyContact', 'photoURL'
+          'fatherName', 'mobile', 'currentLocation', 'emergencyContact', 'photoURL'
         ])
       );
 
