@@ -886,6 +886,15 @@ export const AdminRegistrationsPage: React.FC = () => {
                       >
                         <Eye className="w-4 h-4" />
                       </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditingMember(m)}
+                        className="p-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-xl transition-colors"
+                        title="Edit Member Record"
+                        aria-label={`Edit member record for ${m.fullName}`}
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </button>
                     </div>
 
                     {/* Secondary actions: Request info, Reject, Note */}
@@ -1093,7 +1102,18 @@ export const AdminRegistrationsPage: React.FC = () => {
                               Info
                             </button>
 
-                      {/* Reject */}
+                            <button
+                              type="button"
+                              onClick={() => setEditingMember(m)}
+                              className="inline-flex items-center gap-1 rounded-xl bg-emerald-50 px-2 py-1.5 text-xs font-semibold text-emerald-800 transition-colors hover:bg-emerald-100"
+                              title="Edit Member Record"
+                              aria-label={`Edit member record for ${m.fullName}`}
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                              <span>Edit</span>
+                            </button>
+
+                            {/* Reject */}
                       <button
                         type="button"
                         onClick={() => openActionModal(m, 'reject')}

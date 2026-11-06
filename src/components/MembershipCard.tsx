@@ -496,7 +496,7 @@ export const MembershipCard: React.FC<MembershipCardProps> = ({ member }) => {
                   COMMUNITY HELPLINE
                 </span>
                 <span className="text-[11px] font-mono font-bold text-[#E5B842] tracking-wider leading-none">
-                  +968 2469 6991
+                  +968 9676 6876
                 </span>
               </div>
             </div>
