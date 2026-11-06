@@ -1579,7 +1579,7 @@ export const AdminRegistrationsPage: React.FC = () => {
                 <label className="block text-xs font-bold text-stone-700">Emergency Contact Mobile<input type="tel" inputMode="tel" value={newMemberEmergencyPhone} onChange={(e) => setNewMemberEmergencyPhone(e.target.value)} placeholder="+968 9123 4567" className="mt-1 w-full text-sm p-2.5 rounded-xl border border-stone-300 focus:ring-2 focus:ring-[#0D5A31]" /></label>
               </div>
               <label className="block text-xs font-bold text-stone-700">Member Photo (optional)
-                <input type="file" accept="image/*" capture="environment" onChange={async (event) => {
+                <input type="file" accept="image/*" onChange={async (event) => {
                   const file = event.target.files?.[0];
                   if (!file) return;
                   if (!file.type.startsWith('image/')) {
@@ -1596,7 +1596,7 @@ export const AdminRegistrationsPage: React.FC = () => {
                     event.target.value = '';
                   }
                 }} className="mt-1 block w-full text-xs font-normal" />
-                <span className="mt-1 block text-[10px] font-normal text-stone-500">Take a photo or choose one from this device. It is compressed and stored with the member record for the card.</span>
+                <span className="mt-1 block text-[10px] font-normal text-stone-500">Choose an existing photo from your phone’s Photos/Gallery. If your phone offers a camera option, you can use that too. The image is compressed and stored with the member record for the card.</span>
                 {newMemberPhotoPreview && <img src={newMemberPhotoPreview} alt="New member photo preview" className="mt-2 h-24 w-20 rounded-xl border border-stone-200 object-cover" />}
               </label>
               <div className="rounded-xl bg-emerald-50 px-3 py-2 text-xs text-emerald-900">Required: name, mobile, ID document and location. This entry is saved as approved and issued a membership ID/card.</div>
