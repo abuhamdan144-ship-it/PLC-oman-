@@ -316,6 +316,11 @@ export const MembershipCard: React.FC<MembershipCardProps> = ({ member }) => {
               <h4 className="text-[17px] font-extrabold text-white leading-tight truncate">
                 {member.fullName || 'Member'}
               </h4>
+              {member.fatherName?.trim() && (
+                <p className="mt-0.5 text-[8px] font-semibold text-white/80 leading-tight truncate">
+                  Father: {member.fatherName}
+                </p>
+              )}
               
               <div className="text-[15px] font-extrabold font-mono text-[#E5B842] tracking-wide mt-0.5">
                 {member.memberId || 'Not assigned'}
@@ -448,6 +453,11 @@ export const MembershipCard: React.FC<MembershipCardProps> = ({ member }) => {
                     <td className="w-36 font-semibold text-[#071F25] py-0.5">Full name</td>
                     <td className="w-3 text-stone-400 font-bold">:</td>
                     <td className="font-bold text-[#052125] py-0.5 truncate">{member.fullName || 'Member'}</td>
+                  </tr>
+                  <tr>
+                    <td className="w-36 font-semibold text-[#071F25] py-0.5">Father's name</td>
+                    <td className="w-3 text-stone-400 font-bold">:</td>
+                    <td className="font-semibold text-[#052125] py-0.5 truncate">{member.fatherName || '—'}</td>
                   </tr>
                   <tr>
                     <td className="font-semibold text-[#071F25] py-0.5">CNIC / passport</td>

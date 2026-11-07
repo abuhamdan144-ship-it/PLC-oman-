@@ -51,19 +51,26 @@ service cloud.firestore {
       allow get: if isOwner(userId) || isAdmin();
       allow list: if isAdmin();
 
-      allow create: if (isAdmin() || isOwner(userId))
+      allow create: if (
+        isAdmin()
         && request.resource.data.keys().hasOnly([
           'uid', 'fullName', 'fatherName', 'email', 'mobile', 'country', 'currentLocation', 'idNumber',
           'photoURL', 'paymentReceiptURL', 'receiptReference', 'status', 'adminNote',
           'registeredAt', 'approvedAt', 'memberSince', 'memberId', 'emergencyContact', 'role'
         ])
-        && (
-          isAdmin() || (
-            request.resource.data.status == 'pending'
-            && request.resource.data.role == 'member'
-            && request.resource.data.uid == request.auth.uid
-          )
-        );
+        && request.resource.data.status == 'approved'
+        && request.resource.data.role == 'member'
+      ) || (
+        isOwner(userId)
+        && request.resource.data.keys().hasOnly([
+          'uid', 'fullName', 'fatherName', 'email', 'mobile', 'country', 'currentLocation', 'idNumber',
+          'photoURL', 'paymentReceiptURL', 'receiptReference', 'status', 'adminNote',
+          'registeredAt', 'emergencyContact', 'role'
+        ])
+        && request.resource.data.status == 'pending'
+        && request.resource.data.role == 'member'
+        && request.resource.data.uid == request.auth.uid
+      );
 
       allow update: if isAdmin() || (
         isOwner(userId)
