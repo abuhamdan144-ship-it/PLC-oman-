@@ -6,6 +6,7 @@ export interface EmergencyContact {
   name: string;
   phone: string;
   relation?: string;
+  alternatePhone?: string;
 }
 
 export interface MemberProfile {

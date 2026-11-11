@@ -7,14 +7,16 @@ import {
   deleteDoc,
   runTransaction, 
   setDoc,
+  type Transaction,
   updateDoc, 
   addDoc 
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from '../hooks/useAuth';
-import { MemberProfile, MemberStatus, MemberCountry } from '../types';
+import { EmergencyContact, MemberProfile, MemberStatus, MemberCountry } from '../types';
 import { MembershipCard } from '../components/MembershipCard';
 import { compressImageToDataUrl } from '../lib/imageCompressor';
+import { downloadApprovedMemberRecords, type ApprovedMemberExportFormat } from '../lib/memberExports';
 import { PakistanFlag, OmanFlag, FlagPair } from '../lib/flags';
 import { 
   ShieldCheck, 
@@ -88,6 +90,7 @@ export const AdminRegistrationsPage: React.FC = () => {
   const [adminNoteInput, setAdminNoteInput] = useState('');
   const [actionProcessing, setActionProcessing] = useState(false);
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+  const [exportingFormat, setExportingFormat] = useState<ApprovedMemberExportFormat | null>(null);
 
   // Real-time listener for all members
   useEffect(() => {
@@ -125,6 +128,48 @@ export const AdminRegistrationsPage: React.FC = () => {
     setTimeout(() => setToastMessage(null), 4500);
   };
 
+  const handleExportApprovedMembers = async (format: ApprovedMemberExportFormat) => {
+    setExportingFormat(format);
+    try {
+      const count = await downloadApprovedMemberRecords(members, format);
+      showToast(`Downloaded ${count} approved member records as ${format.toUpperCase()}.`);
+    } catch (error) {
+      console.error('Could not export approved member records:', error);
+      showToast(error instanceof Error ? error.message : 'Could not create the member export.', 'error');
+    } finally {
+      setExportingFormat(null);
+    }
+  };
+
+  const reserveNextMemberId = async (transaction: Transaction): Promise<string> => {
+    if (loading || loadError) {
+      throw new Error('Load the member registry before assigning a new official ID.');
+    }
+
+    const sequenceRef = doc(db, 'system', 'memberIdSequence');
+    const sequenceSnapshot = await transaction.get(sequenceRef);
+    const storedLastIssued = sequenceSnapshot.data()?.lastIssued;
+    let nextNumber = typeof storedLastIssued === 'number' && Number.isSafeInteger(storedLastIssued) && storedLastIssued >= 0
+      ? storedLastIssued + 1
+      : 1;
+    const usedIds = new Set(
+      members
+        .map((member) => member.memberId)
+        .filter((memberId): memberId is string => typeof memberId === 'string')
+    );
+    const formatMemberId = (sequence: number) => `PLC-2026-${String(sequence).padStart(5, '0')}`;
+
+    while (nextNumber <= 99999 && usedIds.has(formatMemberId(nextNumber))) {
+      nextNumber += 1;
+    }
+    if (nextNumber > 99999) {
+      throw new Error('The PLC-2026 member ID sequence has reached 99999.');
+    }
+
+    transaction.set(sequenceRef, { lastIssued: nextNumber }, { merge: true });
+    return formatMemberId(nextNumber);
+  };
+
   const handleDeleteMember = async (memberToDelete: MemberProfile) => {
     if (!window.confirm(`Delete ${memberToDelete.fullName}'s member record? This cannot be undone.`)) return;
     try {
@@ -146,16 +191,53 @@ export const AdminRegistrationsPage: React.FC = () => {
   const handleSaveMemberEdit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!editingMember) return;
+    const normalizedMemberId = editingMember.memberId?.trim() || '';
+    const duplicateMemberId = members.some((member) => member.uid !== editingMember.uid && member.memberId === normalizedMemberId);
+    if (normalizedMemberId && duplicateMemberId) {
+      showToast(`Member ID ${normalizedMemberId} is already assigned to another member.`, 'error');
+      return;
+    }
+    const updatedMember = { ...editingMember, memberId: normalizedMemberId };
     try {
-      const { uid, ...editableData } = editingMember;
+      const { uid, ...editableData } = updatedMember;
       await setDoc(doc(db, 'members', uid), editableData, { merge: true });
-      setMembers((previous) => previous.map((item) => item.uid === uid ? editingMember : item));
-      setSelectedMember(editingMember);
+      setMembers((previous) => previous.map((item) => item.uid === uid ? updatedMember : item));
+      setSelectedMember(updatedMember);
       setEditingMember(null);
-      showToast(`${editingMember.fullName}'s details were updated.`);
+      showToast(`${updatedMember.fullName}'s details were updated.`);
     } catch (error) {
       console.error('Could not update member:', error);
       showToast('Could not save member changes.', 'error');
+    }
+  };
+
+  const updateEditingEmergencyContact = (field: keyof EmergencyContact, value: string) => {
+    setEditingMember((current) => current ? {
+      ...current,
+      emergencyContact: {
+        ...(current.emergencyContact || { name: '', phone: '' }),
+        [field]: value,
+      },
+    } : current);
+  };
+
+  const handleEditMemberPhotoSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const input = event.currentTarget;
+    const file = input.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      showToast('Choose an image file for the member photo.', 'error');
+      input.value = '';
+      return;
+    }
+
+    try {
+      const photoURL = await compressImageToDataUrl(file, 32 * 1024, 320);
+      setEditingMember((current) => current ? { ...current, photoURL } : current);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Could not process this photo.', 'error');
+    } finally {
+      input.value = '';
     }
   };
 
@@ -180,37 +262,34 @@ export const AdminRegistrationsPage: React.FC = () => {
     const memberSinceStr = `${monthNames[now.getMonth()]} ${now.getFullYear()}`;
     const nowIso = now.toISOString();
 
-    // Determine ID
-    let generatedMemberId = memberToApprove.memberId;
-    if (!generatedMemberId || !generatedMemberId.startsWith('PLC-2026-')) {
-      const randomSeq = String(Math.floor(1000 + Math.random() * 9000)).padStart(5, '0');
-      generatedMemberId = `PLC-2026-${randomSeq}`;
-    }
-
     const note = customNote || adminNoteInput.trim() || 'Verified and approved by Community Administrator.';
-    const approvedMember: MemberProfile = {
-      ...memberToApprove,
-      status: 'approved',
-      memberId: generatedMemberId,
-      approvedAt: nowIso,
-      memberSince: memberSinceStr,
-      adminNote: note,
-    };
+    let generatedMemberId = memberToApprove.memberId || '';
 
     // Firestore is the source of truth: only update the UI after its write succeeds.
     try {
       const memberRef = doc(db, 'members', memberToApprove.uid);
-      await setDoc(
-        memberRef,
-        {
+      generatedMemberId = await runTransaction(db, async (transaction) => {
+        let memberId = memberToApprove.memberId;
+        if (!memberId || !memberId.startsWith('PLC-2026-')) {
+          memberId = await reserveNextMemberId(transaction);
+        }
+        transaction.set(memberRef, {
           status: 'approved',
-          memberId: generatedMemberId,
+          memberId,
           approvedAt: nowIso,
           memberSince: memberSinceStr,
           adminNote: note,
-        },
-        { merge: true }
-      );
+        }, { merge: true });
+        return memberId;
+      });
+      const approvedMember: MemberProfile = {
+        ...memberToApprove,
+        status: 'approved',
+        memberId: generatedMemberId,
+        approvedAt: nowIso,
+        memberSince: memberSinceStr,
+        adminNote: note,
+      };
 
       setMembers((prev) =>
         prev.map((m) =>
@@ -356,7 +435,6 @@ export const AdminRegistrationsPage: React.FC = () => {
     }
 
     setIsAddingMember(true);
-    const randomId = `PLC-2026-${Math.floor(10000 + Math.random() * 89999)}`;
     const nowIso = new Date().toISOString();
     const newUid = `manual-${Date.now()}`;
 
@@ -372,7 +450,6 @@ export const AdminRegistrationsPage: React.FC = () => {
       photoURL: newMemberPhoto,
       status: 'approved',
       role: 'member',
-      memberId: randomId,
       registeredAt: nowIso,
       approvedAt: nowIso,
       memberSince: 'October 2026',
@@ -385,8 +462,13 @@ export const AdminRegistrationsPage: React.FC = () => {
     };
 
     // Firestore is the source of truth. Never claim success from a browser-only cache.
+    let memberId = '';
     try {
-      await setDoc(doc(db, 'members', newUid), newProfile);
+      memberId = await runTransaction(db, async (transaction) => {
+        const nextMemberId = await reserveNextMemberId(transaction);
+        transaction.set(doc(db, 'members', newUid), { ...newProfile, memberId: nextMemberId });
+        return nextMemberId;
+      });
     } catch (err) {
       console.error('Could not create member in Firestore:', err);
       setIsAddingMember(false);
@@ -394,7 +476,8 @@ export const AdminRegistrationsPage: React.FC = () => {
       return;
     }
 
-    setMembers((prev) => [newProfile, ...prev]);
+    const savedProfile = { ...newProfile, memberId };
+    setMembers((prev) => [savedProfile, ...prev]);
     setIsAddingMember(false);
     setShowAddModal(false);
     setNewMemberName('');
@@ -408,7 +491,7 @@ export const AdminRegistrationsPage: React.FC = () => {
     setNewMemberEmergencyPhone('');
     setNewMemberPhoto('');
     setNewMemberPhotoPreview('');
-    showToast(`New member ${newProfile.fullName} registered & approved with ID ${randomId}!`);
+    showToast(`New member ${savedProfile.fullName} registered & approved with ID ${memberId}!`);
   };
 
   // Filter list
@@ -557,7 +640,7 @@ export const AdminRegistrationsPage: React.FC = () => {
                 </h2>
               </div>
               <p className="text-xs text-stone-300 leading-relaxed">
-                Approve any registered applicant instantly by entering their Email, CNIC, or Name. An official ID (e.g. <code>PLC-2026-XXXXX</code>) will be generated.
+                Approve any registered applicant instantly by entering their Email, CNIC, or Name. New official IDs are assigned in order, starting at <code>PLC-2026-00001</code>.
               </p>
             </div>
 
@@ -689,6 +772,26 @@ export const AdminRegistrationsPage: React.FC = () => {
           </div>
 
         </div>
+
+        <section aria-labelledby="approved-member-export-title" className="mb-6 flex flex-col gap-4 rounded-2xl border border-emerald-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 id="approved-member-export-title" className="text-sm font-bold text-[#071F25]">Administration records export</h2>
+            <p className="mt-1 text-[11px] leading-relaxed text-stone-600">Download all approved members only ({counts.approved} records). The current search and status filters do not change the export.</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {(['csv', 'excel', 'pdf'] as const).map((format) => (
+              <button
+                key={format}
+                type="button"
+                onClick={() => handleExportApprovedMembers(format)}
+                disabled={loading || counts.approved === 0 || exportingFormat !== null}
+                className="rounded-xl border border-stone-300 bg-stone-50 px-3.5 py-2 text-xs font-bold text-[#071F25] transition-colors hover:border-emerald-500 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {exportingFormat === format ? 'Preparing…' : format === 'excel' ? 'Download Excel' : `Download ${format.toUpperCase()}`}
+              </button>
+            ))}
+          </div>
+        </section>
 
         {statusFilter === 'pending' && !loading && (
           <div className="mb-4 flex items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
@@ -1224,7 +1327,7 @@ export const AdminRegistrationsPage: React.FC = () => {
               
               {actionType === 'approve' && (
                 <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-900 leading-relaxed">
-                  Approving will automatically generate the official Member ID (e.g. <code>PLC-2026-XXXXX</code>) and unlock their digital membership card immediately.
+                  Approving will assign the next sequential official Member ID (starting at <code>PLC-2026-00001</code>) and unlock their digital membership card immediately. Existing member IDs remain unchanged.
                 </div>
               )}
 
@@ -1382,9 +1485,12 @@ export const AdminRegistrationsPage: React.FC = () => {
               <div className="p-3 rounded-xl bg-amber-50/60 border border-amber-200">
                 <span className="text-[10px] font-bold uppercase text-amber-900 block">Emergency Contact</span>
                 <p className="font-semibold text-stone-900 mt-0.5">
-                  {selectedMember.emergencyContact?.name} ({selectedMember.emergencyContact?.relation || 'Family'})
+                  {selectedMember.emergencyContact?.name || 'Not recorded'} ({selectedMember.emergencyContact?.relation || 'Family'})
                 </p>
-                <p className="font-mono text-stone-700">{selectedMember.emergencyContact?.phone}</p>
+                <p className="font-mono text-stone-700">Primary: {selectedMember.emergencyContact?.phone || 'Not recorded'}</p>
+                {selectedMember.emergencyContact?.alternatePhone && (
+                  <p className="font-mono text-stone-700">Alternate: {selectedMember.emergencyContact.alternatePhone}</p>
+                )}
               </div>
 
               {/* Payment Receipt / Proof of Contribution */}
@@ -1477,8 +1583,9 @@ export const AdminRegistrationsPage: React.FC = () => {
                   type="button"
                   onClick={() => setEditingMember(selectedMember)}
                   className="inline-flex items-center gap-1 px-3 py-2 text-xs font-semibold text-stone-700 hover:bg-stone-100 rounded-xl border border-stone-200"
+                  title="Edit all profile, contact, and photo details"
                 >
-                  <Pencil className="h-3.5 w-3.5" /> Edit
+                  <Pencil className="h-3.5 w-3.5" /> Full Edit
                 </button>
                 {selectedMember.status === 'approved' && (
                   <button
@@ -1527,36 +1634,72 @@ export const AdminRegistrationsPage: React.FC = () => {
 
       {editingMember && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
-          <form onSubmit={handleSaveMemberEdit} className="max-h-[90vh] w-full max-w-lg space-y-4 overflow-y-auto rounded-3xl border border-stone-200 bg-white p-6 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-stone-100 pb-3"><div><h3 className="font-heading text-base font-bold text-[#071F25]">Edit member record</h3><p className="text-xs text-stone-500">Administrator changes are saved to Firestore.</p></div><button type="button" onClick={() => setEditingMember(null)} className="text-stone-400">✕</button></div>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <label className="text-xs font-bold text-stone-700">Full name<input required value={editingMember.fullName} onChange={(event) => setEditingMember({ ...editingMember, fullName: event.target.value })} className="mt-1 w-full rounded-xl border border-stone-300 p-2.5 text-sm font-normal" /></label>
-              <label className="text-xs font-bold text-stone-700">Father’s name<input value={editingMember.fatherName || ''} onChange={(event) => setEditingMember({ ...editingMember, fatherName: event.target.value })} className="mt-1 w-full rounded-xl border border-stone-300 p-2.5 text-sm font-normal" /></label>
-              <label className="text-xs font-bold text-stone-700">Email (optional contact)<input type="email" value={editingMember.email} onChange={(event) => setEditingMember({ ...editingMember, email: event.target.value })} className="mt-1 w-full rounded-xl border border-stone-300 p-2.5 text-sm font-normal" /></label>
-              <label className="text-xs font-bold text-stone-700">Mobile<input required value={editingMember.mobile} onChange={(event) => setEditingMember({ ...editingMember, mobile: event.target.value })} className="mt-1 w-full rounded-xl border border-stone-300 p-2.5 text-sm font-normal" /></label>
-              <label className="text-xs font-bold text-stone-700">CNIC / Passport<input required value={editingMember.idNumber} onChange={(event) => setEditingMember({ ...editingMember, idNumber: event.target.value })} className="mt-1 w-full rounded-xl border border-stone-300 p-2.5 text-sm font-normal" /></label>
-              <label className="text-xs font-bold text-stone-700">Country<select value={editingMember.country} onChange={(event) => setEditingMember({ ...editingMember, country: event.target.value as MemberCountry })} className="mt-1 w-full rounded-xl border border-stone-300 p-2.5 text-sm font-normal"><option value="Oman">Oman</option><option value="Pakistan">Pakistan</option></select></label>
-              <label className="text-xs font-bold text-stone-700">City / Wilayat<input required value={editingMember.currentLocation} onChange={(event) => setEditingMember({ ...editingMember, currentLocation: event.target.value })} className="mt-1 w-full rounded-xl border border-stone-300 p-2.5 text-sm font-normal" /></label>
-              <label className="text-xs font-bold text-stone-700">Official Member ID<input value={editingMember.memberId || ''} onChange={(event) => setEditingMember({ ...editingMember, memberId: event.target.value })} className="mt-1 w-full rounded-xl border border-stone-300 p-2.5 text-sm font-normal" /></label>
-              <label className="text-xs font-bold text-stone-700">Status<select value={editingMember.status} onChange={(event) => setEditingMember({ ...editingMember, status: event.target.value as MemberStatus })} className="mt-1 w-full rounded-xl border border-stone-300 p-2.5 text-sm font-normal"><option value="pending">Pending</option><option value="approved">Approved</option><option value="rejected">Rejected</option><option value="info_requested">Info requested</option></select></label>
-              <label className="text-xs font-bold text-stone-700 sm:col-span-2">Member photo
-                <input type="file" accept="image/*" onChange={async (event) => {
-                  const file = event.target.files?.[0];
-                  if (!file) return;
-                  try {
-                    const photoURL = await compressImageToDataUrl(file, 32 * 1024, 320);
-                    setEditingMember({ ...editingMember, photoURL });
-                  } catch (error) {
-                    showToast(error instanceof Error ? error.message : 'Could not process this photo.', 'error');
-                    event.target.value = '';
-                  }
-                }} className="mt-1 block w-full text-xs font-normal" />
-                <span className="mt-1 block text-[10px] font-normal text-stone-500">Choose a photo from your phone. It is automatically compressed for the membership card.</span>
-                {editingMember.photoURL && <img src={editingMember.photoURL} alt="Member photo preview" className="mt-2 h-20 w-16 rounded-lg border border-stone-200 object-cover" />}
-              </label>
+          <form onSubmit={handleSaveMemberEdit} className="max-h-[92vh] w-full max-w-2xl space-y-5 overflow-y-auto rounded-3xl border border-stone-200 bg-white p-5 shadow-2xl sm:p-6">
+            <div className="flex items-center justify-between border-b border-stone-100 pb-3">
+              <div>
+                <h3 className="font-heading text-base font-bold text-[#071F25]">Edit full member profile</h3>
+                <p className="text-xs text-stone-500">Update personal details, emergency contacts, status, and photo. Changes are saved to Firestore.</p>
+              </div>
+              <button type="button" onClick={() => setEditingMember(null)} aria-label="Close editor" className="rounded-lg px-2 py-1 text-stone-400 hover:bg-stone-100">✕</button>
             </div>
+
+            <section className="space-y-3">
+              <h4 className="text-[11px] font-bold uppercase tracking-wide text-stone-500">Personal and membership details</h4>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <label className="text-xs font-bold text-stone-700">Full name<input required value={editingMember.fullName || ''} onChange={(event) => setEditingMember({ ...editingMember, fullName: event.target.value })} className="mt-1 w-full rounded-xl border border-stone-300 p-2.5 text-sm font-normal" /></label>
+                <label className="text-xs font-bold text-stone-700">Father’s name<input value={editingMember.fatherName || ''} onChange={(event) => setEditingMember({ ...editingMember, fatherName: event.target.value })} className="mt-1 w-full rounded-xl border border-stone-300 p-2.5 text-sm font-normal" /></label>
+                <label className="text-xs font-bold text-stone-700">Email (optional)<input type="email" value={editingMember.email || ''} onChange={(event) => setEditingMember({ ...editingMember, email: event.target.value })} className="mt-1 w-full rounded-xl border border-stone-300 p-2.5 text-sm font-normal" /></label>
+                <label className="text-xs font-bold text-stone-700">Member mobile<input required type="tel" inputMode="tel" value={editingMember.mobile || ''} onChange={(event) => setEditingMember({ ...editingMember, mobile: event.target.value })} className="mt-1 w-full rounded-xl border border-stone-300 p-2.5 text-sm font-normal" /></label>
+                <label className="text-xs font-bold text-stone-700">CNIC / Passport<input required value={editingMember.idNumber || ''} onChange={(event) => setEditingMember({ ...editingMember, idNumber: event.target.value })} className="mt-1 w-full rounded-xl border border-stone-300 p-2.5 text-sm font-normal" /></label>
+                <label className="text-xs font-bold text-stone-700">Country<select value={editingMember.country} onChange={(event) => setEditingMember({ ...editingMember, country: event.target.value as MemberCountry })} className="mt-1 w-full rounded-xl border border-stone-300 bg-white p-2.5 text-sm font-normal"><option value="Oman">Oman</option><option value="Pakistan">Pakistan</option></select></label>
+                <label className="text-xs font-bold text-stone-700">City / Wilayat<input required value={editingMember.currentLocation || ''} onChange={(event) => setEditingMember({ ...editingMember, currentLocation: event.target.value })} className="mt-1 w-full rounded-xl border border-stone-300 p-2.5 text-sm font-normal" /></label>
+                <label className="text-xs font-bold text-stone-700">Official member ID<input value={editingMember.memberId || ''} onChange={(event) => setEditingMember({ ...editingMember, memberId: event.target.value })} className="mt-1 w-full rounded-xl border border-stone-300 p-2.5 text-sm font-normal" /></label>
+                <label className="text-xs font-bold text-stone-700 sm:col-span-2">Registration / contribution reference<input value={editingMember.receiptReference || ''} onChange={(event) => setEditingMember({ ...editingMember, receiptReference: event.target.value })} className="mt-1 w-full rounded-xl border border-stone-300 p-2.5 text-sm font-normal" /></label>
+                <label className="text-xs font-bold text-stone-700">Membership status<select value={editingMember.status} onChange={(event) => setEditingMember({ ...editingMember, status: event.target.value as MemberStatus })} className="mt-1 w-full rounded-xl border border-stone-300 bg-white p-2.5 text-sm font-normal"><option value="pending">Pending</option><option value="approved">Approved</option><option value="rejected">Rejected</option><option value="info_requested">Info requested</option></select></label>
+              </div>
+            </section>
+
+            <section className="space-y-3 rounded-2xl border border-amber-200 bg-amber-50/60 p-4">
+              <div>
+                <h4 className="text-xs font-bold text-amber-950">Emergency contact / next of kin</h4>
+                <p className="text-[10px] text-stone-600">Add the main contact and an optional alternate number.</p>
+              </div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <label className="text-xs font-bold text-stone-700">Contact name<input value={editingMember.emergencyContact?.name || ''} onChange={(event) => updateEditingEmergencyContact('name', event.target.value)} className="mt-1 w-full rounded-xl border border-stone-300 bg-white p-2.5 text-sm font-normal" /></label>
+                <label className="text-xs font-bold text-stone-700">Relationship<input value={editingMember.emergencyContact?.relation || ''} onChange={(event) => updateEditingEmergencyContact('relation', event.target.value)} placeholder="e.g. Brother, spouse" className="mt-1 w-full rounded-xl border border-stone-300 bg-white p-2.5 text-sm font-normal" /></label>
+                <label className="text-xs font-bold text-stone-700">Primary contact number<input type="tel" inputMode="tel" value={editingMember.emergencyContact?.phone || ''} onChange={(event) => updateEditingEmergencyContact('phone', event.target.value)} className="mt-1 w-full rounded-xl border border-stone-300 bg-white p-2.5 text-sm font-normal" /></label>
+                <label className="text-xs font-bold text-stone-700">Alternate contact number (optional)<input type="tel" inputMode="tel" value={editingMember.emergencyContact?.alternatePhone || ''} onChange={(event) => updateEditingEmergencyContact('alternatePhone', event.target.value)} className="mt-1 w-full rounded-xl border border-stone-300 bg-white p-2.5 text-sm font-normal" /></label>
+              </div>
+            </section>
+
+            <section className="space-y-3">
+              <h4 className="text-[11px] font-bold uppercase tracking-wide text-stone-500">Member photo</h4>
+              <div className="flex flex-col gap-4 rounded-2xl border border-stone-200 bg-stone-50 p-4 sm:flex-row sm:items-center">
+                {editingMember.photoURL ? (
+                  <img src={editingMember.photoURL} alt={`Photo preview for ${editingMember.fullName}`} className="h-24 w-20 rounded-xl border border-stone-200 object-cover" />
+                ) : (
+                  <div className="flex h-24 w-20 shrink-0 items-center justify-center rounded-xl border border-dashed border-stone-300 bg-white text-center text-[10px] font-semibold text-stone-400">No photo selected</div>
+                )}
+                <div className="space-y-2">
+                  <p className="text-[11px] text-stone-600">Choose a clear image from this phone. It is compressed to a small thumbnail for the member record and card.</p>
+                  <div className="flex flex-wrap gap-2">
+                    <label className="inline-flex cursor-pointer items-center rounded-lg border border-stone-300 bg-white px-3 py-2 text-xs font-semibold text-stone-700 hover:bg-stone-100">
+                      {editingMember.photoURL ? 'Change photo' : 'Upload photo'}
+                      <input type="file" accept="image/*" onChange={handleEditMemberPhotoSelect} className="sr-only" aria-label="Choose a member photo" />
+                    </label>
+                    {editingMember.photoURL && (
+                      <button type="button" onClick={() => setEditingMember({ ...editingMember, photoURL: '' })} className="rounded-lg border border-rose-200 bg-white px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-50">Remove photo</button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </section>
+
             <label className="block text-xs font-bold text-stone-700">Admin note<textarea value={editingMember.adminNote || ''} onChange={(event) => setEditingMember({ ...editingMember, adminNote: event.target.value })} rows={3} className="mt-1 w-full rounded-xl border border-stone-300 p-2.5 text-sm font-normal" /></label>
-            <div className="flex justify-end gap-2 border-t border-stone-100 pt-3"><button type="button" onClick={() => setEditingMember(null)} className="rounded-xl px-4 py-2 text-xs font-semibold text-stone-600">Cancel</button><button type="submit" className="rounded-xl bg-[#0D5A31] px-4 py-2 text-xs font-bold text-white">Save member changes</button></div>
+            <div className="flex justify-end gap-2 border-t border-stone-100 pt-3">
+              <button type="button" onClick={() => setEditingMember(null)} className="rounded-xl px-4 py-2 text-xs font-semibold text-stone-600 hover:bg-stone-100">Cancel</button>
+              <button type="submit" className="rounded-xl bg-[#0D5A31] px-4 py-2 text-xs font-bold text-white hover:bg-[#094023]">Save member changes</button>
+            </div>
           </form>
         </div>
       )}

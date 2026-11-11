@@ -8,7 +8,8 @@ An official, responsive civic web application for the **Pakistan Labour Communit
 
 - **Civic Member Registration**: Full registration with client-side image compression (under 500 KB), mobile and CNIC/Passport validation, and emergency contact details.
 - **Admin Verification Workflow**: Real-time review queue with live `onSnapshot` syncing. Administrators can approve, request info, or reject applications.
-- **Automatic Sequential Member ID Generation**: Upon approval, a Firestore transaction atomically issues standard official IDs (e.g., `PLC-2026-00001`).
+- **Automatic Sequential Member ID Generation**: Approvals and manual member registrations share an atomic Firestore sequence beginning at `PLC-2026-00001`; existing official IDs are retained, and already-used numbers are skipped.
+- **Approved Member Administration Exports**: Authorized administrators can download approved records as CSV, Excel (`.xlsx`), or PDF. Exports are generated in the browser and include contact, identity, emergency-contact, and record-status details.
 - **Double-Sided Digital Membership Card**:
   - Interactive 3D flip card with front and back view toggling.
   - Authentic Pakistan and Oman flags with strict civic design.
